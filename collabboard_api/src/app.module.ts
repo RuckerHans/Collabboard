@@ -1,0 +1,30 @@
+import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
+import { AuthModule } from './auth/auth.module';
+import { BoardsModule } from './boards/boards.module';
+import { DatabaseModule } from './database/database.module';
+import { RlsTransactionInterceptor } from './database/rls-transaction.interceptor';
+import { NotesModule } from './notes/notes.module';
+import { PresenceModule } from './presence/presence.module';
+import { UsersModule } from './users/users.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
+    DatabaseModule,
+    UsersModule,
+    AuthModule,
+    BoardsModule,
+    NotesModule,
+    PresenceModule,
+  ],
+  providers: [
+    { provide: APP_INTERCEPTOR, useClass: RlsTransactionInterceptor },
+  ],
+})
+export class AppModule {}

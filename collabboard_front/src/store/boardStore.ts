@@ -1,0 +1,82 @@
+'use client';
+
+import { create } from 'zustand';
+import type { ActiveUser, Board, BoardMember, ConflictPayload, Note } from '@/src/lib/types';
+
+type BoardState = {
+  board: Board | null;
+  members: BoardMember[];
+  notes: Record<string, Note>;
+  activeUsers: ActiveUser[];
+  deletedNotes: Note[];
+  pending: Record<string, Note>;
+  conflict: ConflictPayload | null;
+  setBoard: (board: Board | null) => void;
+  setMembers: (members: BoardMember[]) => void;
+  setNotes: (notes: Note[]) => void;
+  addNote: (note: Note) => void;
+  patchNote: (id: string, patch: Partial<Note>) => void;
+  removeNote: (id: string) => void;
+  setActiveUsers: (users: ActiveUser[]) => void;
+  upsertActiveUser: (user: ActiveUser) => void;
+  removeActiveUser: (userId: string) => void;
+  rememberPending: (note: Note) => void;
+  rollbackPending: (id: string) => void;
+  clearPending: (id: string) => void;
+  setConflict: (conflict: ConflictPayload | null) => void;
+};
+
+function sameNote(a?: Note, b?: Note) {
+  if (!a || !b) return false;
+  return a.id === b.id && a.version === b.version && a.title === b.title && a.content === b.content && a.color === b.color && a.positionX === b.positionX && a.positionY === b.positionY && a.width === b.width && a.height === b.height && a.zIndex === b.zIndex && a.isPinned === b.isPinned && a.deletedAt === b.deletedAt;
+}
+
+export const useBoardStore = create<BoardState>((set) => ({
+  board: null,
+  members: [],
+  notes: {},
+  activeUsers: [],
+  deletedNotes: [],
+  pending: {},
+  conflict: null,
+  setBoard: (board) => set({ board }),
+  setMembers: (members) => set({ members }),
+  setNotes: (notes) => set((state) => {
+    const next = Object.fromEntries(notes.map((note) => [note.id, note]));
+    const prev = state.notes;
+    const nextIds = Object.keys(next);
+    const prevIds = Object.keys(prev);
+    const isSame = nextIds.length === prevIds.length && nextIds.every((id) => sameNote(prev[id], next[id]));
+    return isSame ? state : { notes: next };
+  }),
+  addNote: (note) => set((state) => ({ notes: { ...state.notes, [note.id]: note } })),
+  patchNote: (id, patch) => set((state) => {
+    const note = state.notes[id];
+    if (!note) return state;
+    return { notes: { ...state.notes, [id]: { ...note, ...patch } } };
+  }),
+  removeNote: (id) => set((state) => {
+    const { [id]: removed, ...notes } = state.notes;
+    return { notes, deletedNotes: removed ? [removed, ...state.deletedNotes] : state.deletedNotes };
+  }),
+  setActiveUsers: (activeUsers) => set({ activeUsers }),
+  upsertActiveUser: (user) => set((state) => {
+    if (!user.userId) return state;
+    const existing = state.activeUsers.find((active) => active.userId === user.userId);
+    if (!existing) return { activeUsers: [...state.activeUsers, user] };
+    return { activeUsers: state.activeUsers.map((active) => active.userId === user.userId ? { ...active, ...user } : active) };
+  }),
+  removeActiveUser: (userId) => set((state) => ({ activeUsers: state.activeUsers.filter((user) => user.userId !== userId) })),
+  rememberPending: (note) => set((state) => ({ pending: { ...state.pending, [note.id]: note } })),
+  rollbackPending: (id) => set((state) => {
+    const original = state.pending[id];
+    if (!original) return state;
+    const { [id]: _removed, ...pending } = state.pending;
+    return { notes: { ...state.notes, [id]: original }, pending };
+  }),
+  clearPending: (id) => set((state) => {
+    const { [id]: _removed, ...pending } = state.pending;
+    return { pending };
+  }),
+  setConflict: (conflict) => set({ conflict }),
+}));

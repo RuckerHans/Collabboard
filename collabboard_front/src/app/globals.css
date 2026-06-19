@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+.dark { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { min-height: 100vh; font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif; }
+button, input, textarea, select { font: inherit; }
+.note-textarea { scrollbar-width: thin; }
+.canvas-surface { background-size: 22px 22px; }

@@ -1,0 +1,79 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: collabboard-nginx
+    restart: unless-stopped
+    depends_on:
+      - front
+      - api
+    ports:
+      - "80:80"
+    volumes:
+      - ../nginx/default.conf:/etc/nginx/conf.d/default.conf
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: collabboard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: collabboard
+      POSTGRES_USER: collabboard
+      POSTGRES_PASSWORD: collabboard123
+    ports:
+      - "5432:5432"
+    volumes:
+      - collabboard_pg_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U collabboard -d collabboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    image: nest-api
+    container_name: collabboard-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3050
+      CORS_ORIGIN: http://localhost,http://localhost:80,http://localhost:3000,http://localhost:5173
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: collabboard
+      DB_PASSWORD: collabboard123
+      DB_NAME: collabboard
+      DB_SSL: "false"
+      JWT_SECRET: local-dev-collabboard-secret-change-me
+      JWT_EXPIRY: 7d
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      GOOGLE_CALLBACK_URL: http://localhost/api/auth/google/callback
+    ports:
+      - "3050:3050"
+
+  front:
+    build:
+      context: ../collabboard_front
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3050/api
+        NEXT_PUBLIC_SOCKET_URL: http://localhost:3050
+    image: collabboard-front
+    container_name: collabboard-front
+    restart: unless-stopped
+    environment:
+      GP_API_BASE_URL: http://api:3050
+      GP_API_KEY: ndn23n95o2345098590jfknjwebifjbfgewrt4f4tfc324t4
+      GP_COOKIE_SECURE: false
+      NEXT_PUBLIC_API_URL: http://localhost:3050/api
+      NEXT_PUBLIC_SOCKET_URL: http://localhost:3050
+    ports:
+      - "3000:3000"
+
+volumes:
+  collabboard_pg_data:
