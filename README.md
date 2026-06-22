@@ -152,3 +152,6 @@ If Docker Compose cannot pull `postgres:16-alpine`:
 ## Notes
 
 The full stack can be deployed using the root `docker-compose.yml` file. For production deployment, update environment variables and enable database SSL encryption.
+
+# Github CI
+[![CI](https://github.com/RuckerHans/Collabboard/actions/workflows/ci.yml/badge.svg)](https://github.com/RuckerHans/Collabboard/actions/workflows/ci.yml)
