@@ -25,7 +25,7 @@ export class BoardMember {
   role: BoardRole;
 
   @Column({ name: 'invited_by', nullable: true })
-  invitedBy?: string;
+  invitedBy?: string | null;
 
   @ManyToOne(() => Board, (board) => board.members, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'board_id' })

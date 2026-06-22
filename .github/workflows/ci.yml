@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: collabboard
+          POSTGRES_USER: collabboard
+          POSTGRES_PASSWORD: collabboard123
+        ports:
+          - 5432:5432
+        # Waits for Postgres to actually be ready before later steps run —
+        # without this, migrations/tests can race against a DB that's
+        # still booting.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: collabboard_api/package-lock.json
+
+      - name: Install dependencies
+        working-directory: collabboard_api
+        run: npm ci
+
+      - name: Install postgresql-client (for psql)
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply schema migration
+        working-directory: collabboard_api
+        run: |
+          PGPASSWORD=collabboard123 psql -h localhost -U collabboard -d collabboard \
+            -f migrations/001_init_schema_and_seed.sql
+
+      - name: Create app role and apply RLS migration
+        working-directory: collabboard_api
+        run: |
+          PGPASSWORD=collabboard123 psql -h localhost -U collabboard -d collabboard -c "
+            CREATE ROLE collabboard_app WITH LOGIN PASSWORD 'collabboard_app_pw123' NOSUPERUSER;
+            GRANT USAGE ON SCHEMA public TO collabboard_app;
+            GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO collabboard_app;
+            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO collabboard_app;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO collabboard_app;
+          "
+          PGPASSWORD=collabboard123 psql -h localhost -U collabboard -d collabboard \
+            -f migrations/002_enable_rls.sql
+
+      - name: Lint
+        working-directory: collabboard_api
+        run: npm run lint
+
+      - name: Run tests
+        working-directory: collabboard_api
+        run: npm test
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: collabboard
+          DB_USERNAME: collabboard
+          DB_PASSWORD: collabboard123
+
+      - name: Build
+        working-directory: collabboard_api
+        run: npm run build
+
+  frontend-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: collabboard_front/package-lock.json
+
+      - name: Install dependencies
+        working-directory: collabboard_front
+        run: npm ci
+
+      - name: Run tests
+        working-directory: collabboard_front
+        run: npm run test
+
+      - name: Build
+        working-directory: collabboard_front
+        run: npm run build

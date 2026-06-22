@@ -1,11 +1,17 @@
-FROM node:20-alpine AS builder
+FROM node:20-alpine AS dependencies
 
 WORKDIR /app
 
 COPY package*.json ./
 RUN npm ci
 
+FROM dependencies AS test
+
 COPY . .
+
+CMD ["npm", "test", "--"]
+
+FROM test AS builder
 
 ARG NEXT_PUBLIC_API_URL=/api
 ARG NEXT_PUBLIC_SOCKET_URL=http://localhost

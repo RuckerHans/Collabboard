@@ -56,13 +56,19 @@ export class BoardsService {
       ownerId,
       isArchived: false,
     });
-    return plainToInstance(
-      BoardResponseDto,
-      await this.db.manager.save(Board, board),
-      {
-        excludeExtraneousValues: true,
-      },
-    );
+    const saved = await this.db.manager.save(Board, board);
+
+    const ownerMembership = this.db.manager.create(BoardMember, {
+      boardId: saved.id,
+      userId: ownerId,
+      role: 'owner',
+      invitedBy: null,
+    });
+    await this.db.manager.save(BoardMember, ownerMembership);
+
+    return plainToInstance(BoardResponseDto, saved, {
+      excludeExtraneousValues: true,
+    });
   }
 
   async getWithMembers(boardId: string, userId: string) {
