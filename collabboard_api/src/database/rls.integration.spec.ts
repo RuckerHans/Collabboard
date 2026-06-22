@@ -4,11 +4,11 @@ import { Pool } from 'pg';
 // If this used `collabboard` (the table owner), RLS would be silently
 // bypassed and this test would prove nothing.
 const pool = new Pool({
-  host: 'postgres', // matches DB_HOST in docker-compose
-  port: 5432,
+  host: process.env.DB_HOST ?? 'postgres',
+  port: Number(process.env.DB_PORT ?? 5432),
   user: 'collabboard_app',
   password: 'collabboard_app_pw123',
-  database: 'collabboard',
+  database: process.env.DB_NAME ?? 'collabboard',
 });
 
 // Seed IDs from 001_init_schema_and_seed.sql — reused rather than
