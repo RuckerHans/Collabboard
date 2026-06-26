@@ -13,6 +13,8 @@ describe('UsersService', () => {
     mockDb = {
       manager: {
         findOne: jest.fn(),
+        query: jest.fn(),
+        create: jest.fn(),
       },
     };
 
@@ -67,13 +69,13 @@ describe('UsersService', () => {
 
   describe('findByEmail', () => {
     it('lowercases the email before querying', async () => {
-      mockDb.manager.findOne.mockResolvedValue(null);
+      mockDb.manager.query.mockResolvedValue([]);
 
       await service.findByEmail('TEST@Example.com');
 
-      expect(mockDb.manager.findOne).toHaveBeenCalledWith(
-        expect.anything(),
-        { where: { email: 'test@example.com', isActive: true } },
+      expect(mockDb.manager.query).toHaveBeenCalledWith(
+        'SELECT * FROM find_user_for_auth($1)',
+        ['test@example.com'],
       );
     });
   });
