@@ -41,6 +41,8 @@ DROP POLICY IF EXISTS active_board_users_delete ON active_board_users;
 
 DROP POLICY IF EXISTS users_select ON users;
 DROP POLICY IF EXISTS users_update ON users;
+DROP POLICY IF EXISTS users_insert ON users;
+DROP FUNCTION IF EXISTS find_user_for_auth(varchar);
 
 DROP FUNCTION IF EXISTS current_app_user_id();
 DROP FUNCTION IF EXISTS is_board_member(uuid, uuid);
@@ -104,6 +106,20 @@ RETURNS boolean AS $tag_sharesboard$
   );
 $tag_sharesboard$ LANGUAGE sql STABLE SECURITY DEFINER;
 
+CREATE FUNCTION find_user_for_auth(p_email varchar)
+RETURNS TABLE(
+  id uuid,
+  email varchar,
+  username varchar,
+  password_hash varchar,
+  avatar_color varchar,
+  is_active boolean
+) AS $tag_findauth$
+  SELECT id, email, username, password_hash, avatar_color, is_active
+  FROM users
+  WHERE email = p_email AND is_active = true;
+$tag_findauth$ LANGUAGE sql STABLE SECURITY DEFINER;
+
 -- These functions are called by RLS policies, which run as whatever role
 -- the app actually connects with (collabboard_app, not the table owner).
 -- CREATE FUNCTION does not automatically grant EXECUTE to other roles, so
@@ -114,6 +130,7 @@ GRANT EXECUTE ON FUNCTION is_board_member(uuid, uuid) TO collabboard_app;
 GRANT EXECUTE ON FUNCTION board_member_role(uuid, uuid) TO collabboard_app;
 GRANT EXECUTE ON FUNCTION board_membership_count(uuid) TO collabboard_app;
 GRANT EXECUTE ON FUNCTION shares_board_with(uuid, uuid) TO collabboard_app;
+GRANT EXECUTE ON FUNCTION find_user_for_auth(varchar) TO collabboard_app;
 
 -- ----------------------------
 -- boards
@@ -238,6 +255,10 @@ CREATE POLICY active_board_users_delete ON active_board_users
 -- ----------------------------
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY users_insert ON users
+  FOR INSERT
+  WITH CHECK (true);
 
 CREATE POLICY users_select ON users
   FOR SELECT

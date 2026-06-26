@@ -20,8 +20,21 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.db.manager.findOne(User, {
-      where: { email: email.toLowerCase(), isActive: true },
+    const rows = await this.db.manager.query(
+      'SELECT * FROM find_user_for_auth($1)',
+      [email.toLowerCase()],
+    );
+    if (rows.length === 0) {
+      return null;
+    }
+    const row = rows[0];
+    return this.db.manager.create(User, {
+      id: row.id,
+      email: row.email,
+      username: row.username,
+      passwordHash: row.password_hash,
+      avatarColor: row.avatar_color,
+      isActive: row.is_active,
     });
   }
 

@@ -10,6 +10,7 @@ import { RlsTransactionInterceptor } from './database/rls-transaction.intercepto
 import { NotesModule } from './notes/notes.module';
 import { PresenceModule } from './presence/presence.module';
 import { UsersModule } from './users/users.module';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -22,6 +23,9 @@ import { UsersModule } from './users/users.module';
     BoardsModule,
     NotesModule,
     PresenceModule,
+  ],
+  controllers: [
+    HealthController,
   ],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: RlsTransactionInterceptor },
