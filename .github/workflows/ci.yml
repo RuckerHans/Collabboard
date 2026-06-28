@@ -224,14 +224,16 @@ jobs:
             --output json
 
           echo "===== Recently stopped API tasks ====="
-          STOPPED_TASKS="$(aws ecs list-tasks \
+          STOPPED_TASKS="$(aws ecs describe-services \
             --cluster "$ECS_CLUSTER" \
-            --service-name "$ECS_SERVICE" \
-            --desired-status STOPPED \
-            --query 'taskArns' \
-            --output text)"
+            --services "$ECS_SERVICE" \
+            --query 'services[0].events[*].message' \
+            --output text \
+            | grep -oE 'task [0-9a-f]{32}' \
+            | awk '{print $2}' \
+            | sort -u)"
 
-          if [ -n "$STOPPED_TASKS" ] && [ "$STOPPED_TASKS" != "None" ]; then
+          if [ -n "$STOPPED_TASKS" ]; then
             aws ecs describe-tasks \
               --cluster "$ECS_CLUSTER" \
               --tasks $STOPPED_TASKS \
@@ -249,9 +251,10 @@ jobs:
                   healthStatus:healthStatus
                 }
               }' \
-              --output json
+              --output json \
+              || echo "Unable to describe failed tasks. Grant ecs:DescribeTasks to the GitHub deployment role."
           else
-            echo "ECS returned no recently stopped tasks for $ECS_SERVICE."
+            echo "No failed task IDs were found in the recent ECS service events."
           fi
 
           echo "===== Recent API CloudWatch logs ====="
@@ -262,10 +265,13 @@ jobs:
           ' "$TASK_DEFINITION_FILE")"
 
           if [ -n "$LOG_GROUP" ]; then
-            aws logs tail "$LOG_GROUP" --since 30m --format short
+            aws logs tail "$LOG_GROUP" --since 30m --format short \
+              || echo "Unable to read API logs. Grant logs:FilterLogEvents to the GitHub deployment role."
           else
             echo "No awslogs log group is configured for container $CONTAINER_NAME."
           fi
+
+          exit 0
   deploy-front:
     name: Deploy collabboard_front to ECS
     runs-on: ubuntu-latest
