@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
+import { randomUUID } from 'crypto';
 import { DatabaseService } from '../database/database.service';
 import { UsersService } from '../users/users.service';
 import { BoardMember, BoardRole } from './board-member.entity';
@@ -51,24 +52,37 @@ export class BoardsService {
   }
 
   async create(dto: CreateBoardDto, ownerId: string) {
-    const board = this.db.manager.create(Board, {
-      ...dto,
-      ownerId,
-      isArchived: false,
-    });
-    const saved = await this.db.manager.save(Board, board);
+    const boardId = randomUUID();
+    const membershipId = randomUUID();
 
-    const ownerMembership = this.db.manager.create(BoardMember, {
-      boardId: saved.id,
-      userId: ownerId,
-      role: 'owner',
-      invitedBy: null,
-    });
-    await this.db.manager.save(BoardMember, ownerMembership);
+    // Do not use INSERT ... RETURNING here. On databases with the original RLS
+    // policy, the board is not selectable until this membership exists, while
+    // the membership cannot exist before the board. Both inserts remain atomic
+    // because every authenticated HTTP request runs in one RLS transaction.
+    await this.db.manager.query(
+      `INSERT INTO boards (id, name, description, owner_id, is_archived)
+       VALUES ($1, $2, $3, $4, false)`,
+      [boardId, dto.name, dto.description ?? null, ownerId],
+    );
+    await this.db.manager.query(
+      `INSERT INTO board_members
+         (id, board_id, user_id, role, invited_by)
+       VALUES ($1, $2, $3, 'owner', NULL)`,
+      [membershipId, boardId, ownerId],
+    );
 
-    return plainToInstance(BoardResponseDto, saved, {
-      excludeExtraneousValues: true,
-    });
+    return plainToInstance(
+      BoardResponseDto,
+      {
+        id: boardId,
+        name: dto.name,
+        description: dto.description,
+        ownerId,
+        isArchived: false,
+        memberCount: 1,
+      },
+      { excludeExtraneousValues: true },
+    );
   }
 
   async getWithMembers(boardId: string, userId: string) {

@@ -12,7 +12,6 @@ describe('UsersService', () => {
     //    We only fake the parts UsersService actually calls: db.manager.findOne
     mockDb = {
       manager: {
-        findOne: jest.fn(),
         query: jest.fn(),
         create: jest.fn(),
       },
@@ -33,16 +32,29 @@ describe('UsersService', () => {
 
   describe('findById', () => {
     it('returns the user when found', async () => {
-      const fakeUser = { id: 'abc-123', email: 'test@test.com', isActive: true };
-      mockDb.manager.findOne.mockResolvedValue(fakeUser);
+      const row = {
+        id: 'abc-123',
+        email: 'test@test.com',
+        username: 'tester',
+        password_hash: 'hash',
+        avatar_color: '#2563eb',
+        is_active: true,
+      };
+      const fakeUser = { id: row.id, email: row.email, isActive: true };
+      mockDb.manager.query.mockResolvedValue([row]);
+      mockDb.manager.create.mockReturnValue(fakeUser);
 
       const result = await service.findById('abc-123');
 
       expect(result).toEqual(fakeUser);
+      expect(mockDb.manager.query).toHaveBeenCalledWith(
+        'SELECT * FROM find_user_by_id_for_auth($1)',
+        ['abc-123'],
+      );
     });
 
     it('returns null when not found', async () => {
-      mockDb.manager.findOne.mockResolvedValue(null);
+      mockDb.manager.query.mockResolvedValue([]);
 
       const result = await service.findById('does-not-exist');
 
@@ -53,7 +65,15 @@ describe('UsersService', () => {
   describe('getById', () => {
     it('returns the user when found', async () => {
       const fakeUser = { id: 'abc-123', email: 'test@test.com' };
-      mockDb.manager.findOne.mockResolvedValue(fakeUser);
+      mockDb.manager.query.mockResolvedValue([{
+        id: fakeUser.id,
+        email: fakeUser.email,
+        username: 'tester',
+        password_hash: 'hash',
+        avatar_color: '#2563eb',
+        is_active: true,
+      }]);
+      mockDb.manager.create.mockReturnValue(fakeUser);
 
       const result = await service.getById('abc-123');
 
@@ -61,7 +81,7 @@ describe('UsersService', () => {
     });
 
     it('throws NotFoundException when user does not exist', async () => {
-      mockDb.manager.findOne.mockResolvedValue(null);
+      mockDb.manager.query.mockResolvedValue([]);
 
       await expect(service.getById('ghost-id')).rejects.toThrow(NotFoundException);
     });

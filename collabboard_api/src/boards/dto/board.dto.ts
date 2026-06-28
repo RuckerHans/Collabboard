@@ -41,8 +41,8 @@ export class InviteMemberDto {
 }
 
 export class UpdateMemberRoleDto {
-  @IsIn(['owner', 'editor', 'viewer'])
-  role: BoardRole;
+  @IsIn(['editor', 'viewer'])
+  role: Extract<BoardRole, 'editor' | 'viewer'>;
 }
 
 export class BoardParamDto {

@@ -1,110 +1,143 @@
--- ============================================================
--- Enable Row-Level Security and define policies for multi-tenant
--- board isolation. All policies key off app.current_user_id,
--- which is set per-transaction by DatabaseService.runInRlsTransaction
--- via SELECT set_config('app.current_user_id', userId, true).
+-- Row-level security for the CollabBoard application role.
 --
--- IMPORTANT: The app connects as a single DB user (`collabboard`) which
--- also owns every table (it ran 001_init_schema_and_seed.sql). Postgres
--- does NOT enforce RLS against table owners by default — FORCE ROW LEVEL
--- SECURITY is required below so these policies actually apply to the
--- app's own connection, not just to hypothetical other roles.
---
--- This migration was previously applied in broken forms (recursion, then
--- a dollar-quoting collision between function bodies). These DROP
--- statements make the file safely re-runnable from any prior state.
--- Safe to run on a fresh database too (DROP ... IF EXISTS).
--- ============================================================
+-- The table owner remains the migration/maintenance role. The API connects as
+-- collabboard_app, a non-owner without BYPASSRLS. SECURITY DEFINER helpers run
+-- as the table owner so they can inspect board_members without recursively
+-- invoking that table's policies.
+
+DO $grant_connect$
+BEGIN
+  EXECUTE format(
+    'GRANT CONNECT ON DATABASE %I TO collabboard_app',
+    current_database()
+  );
+END
+$grant_connect$;
+GRANT USAGE ON SCHEMA public TO collabboard_app;
 
 DROP POLICY IF EXISTS boards_select ON boards;
 DROP POLICY IF EXISTS boards_insert ON boards;
 DROP POLICY IF EXISTS boards_update ON boards;
 DROP POLICY IF EXISTS boards_delete ON boards;
-
 DROP POLICY IF EXISTS board_members_select ON board_members;
 DROP POLICY IF EXISTS board_members_insert ON board_members;
 DROP POLICY IF EXISTS board_members_update ON board_members;
 DROP POLICY IF EXISTS board_members_delete ON board_members;
-
 DROP POLICY IF EXISTS notes_select ON notes;
 DROP POLICY IF EXISTS notes_insert ON notes;
 DROP POLICY IF EXISTS notes_update ON notes;
 DROP POLICY IF EXISTS notes_delete ON notes;
-
 DROP POLICY IF EXISTS note_history_select ON note_history;
 DROP POLICY IF EXISTS note_history_insert ON note_history;
-
 DROP POLICY IF EXISTS active_board_users_select ON active_board_users;
 DROP POLICY IF EXISTS active_board_users_insert ON active_board_users;
 DROP POLICY IF EXISTS active_board_users_update ON active_board_users;
 DROP POLICY IF EXISTS active_board_users_delete ON active_board_users;
-
 DROP POLICY IF EXISTS users_select ON users;
-DROP POLICY IF EXISTS users_update ON users;
 DROP POLICY IF EXISTS users_insert ON users;
-DROP FUNCTION IF EXISTS find_user_for_auth(varchar);
+DROP POLICY IF EXISTS users_update ON users;
 
+DROP FUNCTION IF EXISTS find_user_for_auth(varchar);
+DROP FUNCTION IF EXISTS find_user_by_id_for_auth(uuid);
 DROP FUNCTION IF EXISTS current_app_user_id();
 DROP FUNCTION IF EXISTS is_board_member(uuid, uuid);
 DROP FUNCTION IF EXISTS board_member_role(uuid, uuid);
 DROP FUNCTION IF EXISTS board_membership_count(uuid);
+DROP FUNCTION IF EXISTS is_board_owner(uuid, uuid);
 DROP FUNCTION IF EXISTS shares_board_with(uuid, uuid);
+DROP FUNCTION IF EXISTS note_belongs_to_board(uuid, uuid);
 
--- ============================================================
--- Helper functions.
---
--- Each function body uses its OWN unique dollar-quote tag
--- ($tag_name$ ... $tag_name$) instead of a bare $$. Reusing bare $$
--- across multiple function bodies in the same file is ambiguous —
--- Postgres just looks for the next matching $$ token, not a
--- "new function" boundary, which causes "unterminated dollar-quoted
--- string" / syntax errors once more than one function is defined
--- this way in a single script.
---
--- current_app_user_id() simply reads the per-transaction setting.
---
--- The four SECURITY DEFINER functions below run as the function owner
--- (the table owner), bypassing RLS ONLY for their own internal query.
--- This is required because board_members has RLS enabled on itself —
--- a board_members policy that queried board_members directly would
--- recurse infinitely checking its own rows. These functions break that
--- cycle while only ever returning a boolean/text/integer, so they
--- can't be used to leak raw row data to the caller.
--- ============================================================
-
-CREATE FUNCTION current_app_user_id() RETURNS uuid AS $tag_curuser$
-  SELECT current_setting('app.current_user_id', true)::uuid;
-$tag_curuser$ LANGUAGE sql STABLE;
+CREATE FUNCTION current_app_user_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SET search_path = pg_catalog
+AS $function$
+  SELECT NULLIF(current_setting('app.current_user_id', true), '')::uuid;
+$function$;
 
 CREATE FUNCTION is_board_member(p_board_id uuid, p_user_id uuid)
-RETURNS boolean AS $tag_ismember$
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
   SELECT EXISTS (
-    SELECT 1 FROM board_members
+    SELECT 1
+    FROM public.board_members
     WHERE board_id = p_board_id AND user_id = p_user_id
   );
-$tag_ismember$ LANGUAGE sql STABLE SECURITY DEFINER;
+$function$;
 
 CREATE FUNCTION board_member_role(p_board_id uuid, p_user_id uuid)
-RETURNS text AS $tag_memberrole$
-  SELECT role FROM board_members
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+  SELECT role
+  FROM public.board_members
   WHERE board_id = p_board_id AND user_id = p_user_id
   LIMIT 1;
-$tag_memberrole$ LANGUAGE sql STABLE SECURITY DEFINER;
+$function$;
 
 CREATE FUNCTION board_membership_count(p_board_id uuid)
-RETURNS integer AS $tag_membercount$
-  SELECT COUNT(*)::int FROM board_members WHERE board_id = p_board_id;
-$tag_membercount$ LANGUAGE sql STABLE SECURITY DEFINER;
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+  SELECT COUNT(*)::integer
+  FROM public.board_members
+  WHERE board_id = p_board_id;
+$function$;
+
+CREATE FUNCTION is_board_owner(p_board_id uuid, p_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.boards
+    WHERE id = p_board_id AND owner_id = p_user_id
+  );
+$function$;
 
 CREATE FUNCTION shares_board_with(p_other_user_id uuid, p_current_user_id uuid)
-RETURNS boolean AS $tag_sharesboard$
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
   SELECT EXISTS (
-    SELECT 1 FROM board_members bm1
-    JOIN board_members bm2 ON bm1.board_id = bm2.board_id
-    WHERE bm1.user_id = p_current_user_id
-      AND bm2.user_id = p_other_user_id
+    SELECT 1
+    FROM public.board_members AS mine
+    JOIN public.board_members AS theirs ON theirs.board_id = mine.board_id
+    WHERE mine.user_id = p_current_user_id
+      AND theirs.user_id = p_other_user_id
   );
-$tag_sharesboard$ LANGUAGE sql STABLE SECURITY DEFINER;
+$function$;
+
+CREATE FUNCTION note_belongs_to_board(p_note_id uuid, p_board_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.notes
+    WHERE id = p_note_id AND board_id = p_board_id
+  );
+$function$;
 
 CREATE FUNCTION find_user_for_auth(p_email varchar)
 RETURNS TABLE(
@@ -114,33 +147,93 @@ RETURNS TABLE(
   password_hash varchar,
   avatar_color varchar,
   is_active boolean
-) AS $tag_findauth$
-  SELECT id, email, username, password_hash, avatar_color, is_active
-  FROM users
-  WHERE email = p_email AND is_active = true;
-$tag_findauth$ LANGUAGE sql STABLE SECURITY DEFINER;
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+  SELECT u.id, u.email, u.username, u.password_hash, u.avatar_color, u.is_active
+  FROM public.users AS u
+  WHERE lower(u.email) = lower(p_email) AND u.is_active = true;
+$function$;
 
--- These functions are called by RLS policies, which run as whatever role
--- the app actually connects with (collabboard_app, not the table owner).
--- CREATE FUNCTION does not automatically grant EXECUTE to other roles, so
--- this must be explicit or every policy call fails with "function does
--- not exist" for any non-owner role.
+CREATE FUNCTION find_user_by_id_for_auth(p_id uuid)
+RETURNS TABLE(
+  id uuid,
+  email varchar,
+  username varchar,
+  password_hash varchar,
+  avatar_color varchar,
+  is_active boolean
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+  SELECT u.id, u.email, u.username, u.password_hash, u.avatar_color, u.is_active
+  FROM public.users AS u
+  WHERE u.id = p_id AND u.is_active = true;
+$function$;
+
+REVOKE ALL ON FUNCTION current_app_user_id() FROM PUBLIC;
+REVOKE ALL ON FUNCTION is_board_member(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION board_member_role(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION board_membership_count(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION is_board_owner(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION shares_board_with(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION note_belongs_to_board(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION find_user_for_auth(varchar) FROM PUBLIC;
+REVOKE ALL ON FUNCTION find_user_by_id_for_auth(uuid) FROM PUBLIC;
+
 GRANT EXECUTE ON FUNCTION current_app_user_id() TO collabboard_app;
 GRANT EXECUTE ON FUNCTION is_board_member(uuid, uuid) TO collabboard_app;
 GRANT EXECUTE ON FUNCTION board_member_role(uuid, uuid) TO collabboard_app;
 GRANT EXECUTE ON FUNCTION board_membership_count(uuid) TO collabboard_app;
+GRANT EXECUTE ON FUNCTION is_board_owner(uuid, uuid) TO collabboard_app;
 GRANT EXECUTE ON FUNCTION shares_board_with(uuid, uuid) TO collabboard_app;
+GRANT EXECUTE ON FUNCTION note_belongs_to_board(uuid, uuid) TO collabboard_app;
 GRANT EXECUTE ON FUNCTION find_user_for_auth(varchar) TO collabboard_app;
+GRANT EXECUTE ON FUNCTION find_user_by_id_for_auth(uuid) TO collabboard_app;
 
--- ----------------------------
--- boards
--- ----------------------------
+-- RLS is deliberately not forced on the owner: the SECURITY DEFINER helpers
+-- above need the owner's normal RLS exemption to avoid policy recursion.
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE boards ENABLE ROW LEVEL SECURITY;
-ALTER TABLE boards FORCE ROW LEVEL SECURITY;
+ALTER TABLE boards NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE board_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE board_members NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notes NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE note_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE note_history NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE active_board_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE active_board_users NO FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY users_select ON users
+  FOR SELECT
+  USING (
+    id = current_app_user_id()
+    OR shares_board_with(id, current_app_user_id())
+  );
+
+CREATE POLICY users_insert ON users
+  FOR INSERT
+  WITH CHECK (id = current_app_user_id());
+
+CREATE POLICY users_update ON users
+  FOR UPDATE
+  USING (id = current_app_user_id())
+  WITH CHECK (id = current_app_user_id());
 
 CREATE POLICY boards_select ON boards
   FOR SELECT
-  USING (is_board_member(boards.id, current_app_user_id()));
+  USING (
+    owner_id = current_app_user_id()
+    OR is_board_member(id, current_app_user_id())
+  );
 
 CREATE POLICY boards_insert ON boards
   FOR INSERT
@@ -148,125 +241,170 @@ CREATE POLICY boards_insert ON boards
 
 CREATE POLICY boards_update ON boards
   FOR UPDATE
-  USING (owner_id = current_app_user_id());
+  USING (board_member_role(id, current_app_user_id()) IN ('owner', 'editor'))
+  WITH CHECK (board_member_role(id, current_app_user_id()) IN ('owner', 'editor'));
 
 CREATE POLICY boards_delete ON boards
   FOR DELETE
   USING (owner_id = current_app_user_id());
 
--- ----------------------------
--- board_members
--- ----------------------------
-ALTER TABLE board_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE board_members FORCE ROW LEVEL SECURITY;
-
 CREATE POLICY board_members_select ON board_members
   FOR SELECT
-  USING (is_board_member(board_members.board_id, current_app_user_id()));
+  USING (
+    is_board_owner(board_id, current_app_user_id())
+    OR is_board_member(board_id, current_app_user_id())
+  );
 
--- Two cases can insert a membership row:
---   1. An existing owner/editor adding someone else to the board.
---   2. A user creating their OWN first membership as owner, immediately
---      after creating the board itself (bootstrap case — no membership
---      rows exist yet for this board_id).
 CREATE POLICY board_members_insert ON board_members
   FOR INSERT
   WITH CHECK (
-    board_member_role(board_members.board_id, current_app_user_id()) IN ('owner', 'editor')
+    (
+      is_board_owner(board_id, current_app_user_id())
+      AND user_id <> current_app_user_id()
+      AND role IN ('editor', 'viewer')
+      AND invited_by = current_app_user_id()
+    )
     OR (
       user_id = current_app_user_id()
       AND role = 'owner'
-      AND board_membership_count(board_members.board_id) = 0
+      AND invited_by IS NULL
+      AND is_board_owner(board_id, current_app_user_id())
+      AND board_membership_count(board_id) = 0
     )
   );
 
 CREATE POLICY board_members_update ON board_members
   FOR UPDATE
-  USING (board_member_role(board_members.board_id, current_app_user_id()) = 'owner');
+  USING (
+    is_board_owner(board_id, current_app_user_id())
+    AND NOT is_board_owner(board_id, user_id)
+  )
+  WITH CHECK (
+    is_board_owner(board_id, current_app_user_id())
+    AND NOT is_board_owner(board_id, user_id)
+    AND role IN ('editor', 'viewer')
+  );
 
 CREATE POLICY board_members_delete ON board_members
   FOR DELETE
   USING (
-    user_id = current_app_user_id()
-    OR board_member_role(board_members.board_id, current_app_user_id()) = 'owner'
+    NOT is_board_owner(board_id, user_id)
+    AND (
+      user_id = current_app_user_id()
+      OR is_board_owner(board_id, current_app_user_id())
+    )
   );
-
--- ----------------------------
--- notes
--- ----------------------------
-ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notes FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY notes_select ON notes
   FOR SELECT
-  USING (is_board_member(notes.board_id, current_app_user_id()));
+  USING (is_board_member(board_id, current_app_user_id()));
 
 CREATE POLICY notes_insert ON notes
   FOR INSERT
-  WITH CHECK (board_member_role(notes.board_id, current_app_user_id()) IN ('owner', 'editor'));
+  WITH CHECK (
+    created_by = current_app_user_id()
+    AND board_member_role(board_id, current_app_user_id()) IN ('owner', 'editor')
+  );
 
 CREATE POLICY notes_update ON notes
   FOR UPDATE
-  USING (board_member_role(notes.board_id, current_app_user_id()) IN ('owner', 'editor'));
+  USING (board_member_role(board_id, current_app_user_id()) IN ('owner', 'editor'))
+  WITH CHECK (board_member_role(board_id, current_app_user_id()) IN ('owner', 'editor'));
 
 CREATE POLICY notes_delete ON notes
   FOR DELETE
-  USING (board_member_role(notes.board_id, current_app_user_id()) IN ('owner', 'editor'));
-
--- ----------------------------
--- note_history
--- ----------------------------
-ALTER TABLE note_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE note_history FORCE ROW LEVEL SECURITY;
+  USING (board_member_role(board_id, current_app_user_id()) IN ('owner', 'editor'));
 
 CREATE POLICY note_history_select ON note_history
   FOR SELECT
-  USING (is_board_member(note_history.board_id, current_app_user_id()));
+  USING (is_board_member(board_id, current_app_user_id()));
 
 CREATE POLICY note_history_insert ON note_history
   FOR INSERT
-  WITH CHECK (is_board_member(note_history.board_id, current_app_user_id()));
-
--- ----------------------------
--- active_board_users (presence)
--- ----------------------------
-ALTER TABLE active_board_users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE active_board_users FORCE ROW LEVEL SECURITY;
+  WITH CHECK (
+    changed_by = current_app_user_id()
+    AND board_member_role(board_id, current_app_user_id()) IN ('owner', 'editor')
+    AND note_belongs_to_board(note_id, board_id)
+  );
 
 CREATE POLICY active_board_users_select ON active_board_users
   FOR SELECT
-  USING (is_board_member(active_board_users.board_id, current_app_user_id()));
+  USING (is_board_member(board_id, current_app_user_id()));
 
 CREATE POLICY active_board_users_insert ON active_board_users
   FOR INSERT
-  WITH CHECK (user_id = current_app_user_id());
+  WITH CHECK (
+    user_id = current_app_user_id()
+    AND is_board_member(board_id, current_app_user_id())
+    AND (
+      current_note_id IS NULL
+      OR note_belongs_to_board(current_note_id, board_id)
+    )
+  );
 
 CREATE POLICY active_board_users_update ON active_board_users
   FOR UPDATE
-  USING (user_id = current_app_user_id());
+  USING (
+    user_id = current_app_user_id()
+    AND is_board_member(board_id, current_app_user_id())
+  )
+  WITH CHECK (
+    user_id = current_app_user_id()
+    AND is_board_member(board_id, current_app_user_id())
+    AND (
+      current_note_id IS NULL
+      OR note_belongs_to_board(current_note_id, board_id)
+    )
+  );
 
 CREATE POLICY active_board_users_delete ON active_board_users
   FOR DELETE
   USING (user_id = current_app_user_id());
 
--- ----------------------------
--- users
--- A user can always see their own row, plus anyone they share a board with.
--- ----------------------------
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE users FORCE ROW LEVEL SECURITY;
+-- Start from no inherited/default privileges, then grant only what the API
+-- actually needs. Immutable tenant keys are intentionally omitted from UPDATE.
+REVOKE ALL ON users, boards, board_members, notes, note_history, active_board_users
+  FROM PUBLIC, collabboard_app;
 
-CREATE POLICY users_insert ON users
-  FOR INSERT
-  WITH CHECK (true);
+GRANT SELECT ON users, boards, board_members, notes, note_history, active_board_users
+  TO collabboard_app;
+GRANT INSERT ON users, boards, board_members, notes, note_history, active_board_users
+  TO collabboard_app;
+GRANT DELETE ON boards, board_members, notes, active_board_users
+  TO collabboard_app;
 
-CREATE POLICY users_select ON users
-  FOR SELECT
-  USING (
-    id = current_app_user_id()
-    OR shares_board_with(users.id, current_app_user_id())
-  );
+GRANT UPDATE (username, email, avatar_color) ON users TO collabboard_app;
+GRANT UPDATE (name, description, is_archived) ON boards TO collabboard_app;
+GRANT UPDATE (role) ON board_members TO collabboard_app;
+GRANT UPDATE (
+  title, content, color, position_x, position_y, width, height,
+  z_index, version, is_pinned, deleted_at
+) ON notes TO collabboard_app;
+GRANT UPDATE (
+  socket_id, last_heartbeat, cursor_x, cursor_y, current_note_id,
+  is_typing, typing_expires_at
+) ON active_board_users TO collabboard_app;
 
-CREATE POLICY users_update ON users
-  FOR UPDATE
-  USING (id = current_app_user_id());
+-- The scheduler calls this without a user-scoped transaction. Expired typing
+-- state should be cleared without evicting an otherwise active user.
+CREATE OR REPLACE FUNCTION fn_cleanup_stale_presence()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+BEGIN
+  UPDATE public.active_board_users
+  SET is_typing = false,
+      current_note_id = NULL,
+      typing_expires_at = NULL
+  WHERE typing_expires_at IS NOT NULL
+    AND typing_expires_at < clock_timestamp();
+
+  DELETE FROM public.active_board_users
+  WHERE last_heartbeat < clock_timestamp() - interval '60 seconds';
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION fn_cleanup_stale_presence() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION fn_cleanup_stale_presence() TO collabboard_app;

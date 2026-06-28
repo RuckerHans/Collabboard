@@ -3,12 +3,25 @@ import { randomUUID } from 'crypto';
 import { DatabaseService } from '../database/database.service';
 import { User } from './user.entity';
 
+type AuthUserRow = {
+  id: string;
+  email: string;
+  username: string;
+  password_hash?: string;
+  avatar_color: string;
+  is_active: boolean;
+};
+
 @Injectable()
 export class UsersService {
   constructor(private readonly db: DatabaseService) {}
 
   async findById(id: string): Promise<User | null> {
-    return this.db.manager.findOne(User, { where: { id, isActive: true } });
+    const rows = await this.db.manager.query(
+      'SELECT * FROM find_user_by_id_for_auth($1)',
+      [id],
+    );
+    return rows.length === 0 ? null : this.authRowToUser(rows[0]);
   }
 
   async getById(id: string): Promise<User> {
@@ -27,7 +40,10 @@ export class UsersService {
     if (rows.length === 0) {
       return null;
     }
-    const row = rows[0];
+    return this.authRowToUser(rows[0]);
+  }
+
+  private authRowToUser(row: AuthUserRow): User {
     return this.db.manager.create(User, {
       id: row.id,
       email: row.email,

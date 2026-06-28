@@ -57,8 +57,8 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage('join_board')
   async joinBoard(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() body: BoardBody) {
     const user = await this.ensureSocketUser(client);
-    await client.join(this.room(body.boardId));
     const state = await this.presence.joinBoard(body.boardId, user.id, client.id);
+    await client.join(this.room(body.boardId));
     client.emit('board_state', state);
     client.to(this.room(body.boardId)).emit('user_joined', { userId: user.id });
   }

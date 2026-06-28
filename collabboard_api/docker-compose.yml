@@ -44,8 +44,8 @@ services:
       CORS_ORIGIN: http://localhost,http://localhost:80,http://localhost:3000,http://localhost:5173
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USERNAME: collabboard
-      DB_PASSWORD: collabboard123
+      DB_USERNAME: collabboard_app
+      DB_PASSWORD: collabboard_app_pw123
       DB_NAME: collabboard
       DB_SSL: "false"
       JWT_SECRET: local-dev-collabboard-secret-change-me

@@ -50,6 +50,9 @@ export function getApiErrorMessage(error: unknown, fallback = 'Something went wr
             : undefined;
 
   if (status === 404) {
+    if (data?.error !== 'route_not_found' && serverMessage) {
+      return `${serverMessage} (404${requestSummary ? `, ${requestSummary}` : ''})`;
+    }
     return [
       'API route not found (404).',
       requestSummary ? `Request: ${requestSummary}.` : undefined,

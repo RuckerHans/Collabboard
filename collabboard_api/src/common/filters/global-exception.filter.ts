@@ -17,18 +17,46 @@ type PgError = Error & {
   table?: string;
 };
 
+type RequestDetails = {
+  method?: string;
+  originalUrl?: string;
+  url?: string;
+};
+
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
 
   catch(exception: unknown, host: ArgumentsHost) {
-    const response = host.switchToHttp().getResponse();
+    const http = host.switchToHttp();
+    const response = http.getResponse();
+    const request = http.getRequest<RequestDetails>();
+    const context = {
+      method: request.method,
+      path: request.originalUrl ?? request.url,
+      timestamp: new Date().toISOString(),
+    };
 
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
+      const body = exception.getResponse();
+      const defaultBody =
+        typeof body === 'object' && body !== null
+          ? (body as { error?: string; message?: string | string[] })
+          : undefined;
+      const isMissingRoute =
+        status === HttpStatus.NOT_FOUND &&
+        typeof defaultBody?.message === 'string' &&
+        defaultBody.message.startsWith('Cannot ');
       response.status(status).json({
         statusCode: status,
-        message: exception.getResponse(),
+        error: isMissingRoute
+          ? 'route_not_found'
+          : this.httpErrorCode(status, defaultBody?.error),
+        message: isMissingRoute
+          ? `API route ${context.method ?? ''} ${context.path ?? ''} was not found.`.trim()
+          : (defaultBody?.message ?? body),
+        ...context,
       });
       return;
     }
@@ -39,8 +67,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         `PostgreSQL error ${error.code ?? 'unknown'}: ${error.message}`,
         error.detail,
       );
-      const mapped = this.mapPgError(error);
-      response.status(mapped.statusCode).json(mapped);
+      const mapped = this.mapPgError(error, request);
+      response.status(mapped.statusCode).json({ ...mapped, ...context });
       return;
     }
 
@@ -48,11 +76,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     this.logger.error(message, exception instanceof Error ? exception.stack : undefined);
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      error: 'internal_server_error',
       message: process.env.NODE_ENV === 'development' ? message : 'Internal server error',
+      ...context,
     });
   }
 
-  private mapPgError(error: PgError) {
+  private mapPgError(error: PgError, request: RequestDetails) {
     if (error.code === 'P0001') {
       return {
         statusCode: HttpStatus.CONFLICT,
@@ -87,10 +117,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       error.code === '42501' ||
       error.message?.toLowerCase().includes('row-level security')
     ) {
+      const action = this.actionForMethod(request.method);
+      const resource = this.resourceForPath(request.originalUrl ?? request.url);
       return {
         statusCode: HttpStatus.FORBIDDEN,
         error: 'rls_policy_violation',
-        message: 'RLS policy denied this operation',
+        message: `You do not have permission to ${action} this ${resource}.`,
       };
     }
     if (error.code === '23503') {
@@ -109,10 +141,43 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 
   private humanizeUniqueViolation(error: PgError): string {
+    if (error.constraint === 'board_members_unique') {
+      return 'This user is already a member of the board';
+    }
     const match = error.detail?.match(/\(([^)]+)\)=\(([^)]+)\)/);
     if (!match) {
       return 'A record with these values already exists';
     }
     return `${match[1]} '${match[2]}' already exists`;
+  }
+
+  private httpErrorCode(status: number, fallback?: string) {
+    const codes: Record<number, string> = {
+      [HttpStatus.BAD_REQUEST]: 'bad_request',
+      [HttpStatus.UNAUTHORIZED]: 'unauthorized',
+      [HttpStatus.FORBIDDEN]: 'forbidden',
+      [HttpStatus.NOT_FOUND]: 'not_found',
+      [HttpStatus.CONFLICT]: 'conflict',
+    };
+    return codes[status] ?? fallback?.toLowerCase().replace(/\s+/g, '_') ?? 'http_error';
+  }
+
+  private actionForMethod(method?: string) {
+    const actions: Record<string, string> = {
+      GET: 'view',
+      POST: 'create',
+      PUT: 'update',
+      PATCH: 'update',
+      DELETE: 'delete',
+    };
+    return actions[method ?? ''] ?? 'access';
+  }
+
+  private resourceForPath(path?: string) {
+    if (path?.includes('/members')) return 'board membership';
+    if (path?.includes('/notes')) return 'note';
+    if (path?.includes('/boards')) return 'board';
+    if (path?.includes('/users')) return 'user';
+    return 'resource';
   }
 }

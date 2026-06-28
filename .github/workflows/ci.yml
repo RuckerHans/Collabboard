@@ -79,13 +79,13 @@ jobs:
 
       - name: Run tests
         working-directory: collabboard_api
-        run: npm test
+        run: npm test && npm run test:rls
         env:
           DB_HOST: localhost
           DB_PORT: 5432
           DB_NAME: collabboard
-          DB_USERNAME: collabboard
-          DB_PASSWORD: collabboard123
+          DB_USERNAME: collabboard_app
+          DB_PASSWORD: collabboard_app_pw123
 
       - name: Build
         working-directory: collabboard_api

@@ -192,8 +192,21 @@ export class NotesService {
   private cleanPatch<T extends Record<string, unknown>>(
     patch: T,
   ): Partial<Note> {
+    const editableFields = new Set([
+      'title',
+      'content',
+      'color',
+      'positionX',
+      'positionY',
+      'width',
+      'height',
+      'zIndex',
+      'isPinned',
+    ]);
     return Object.fromEntries(
-      Object.entries(patch).filter(([, value]) => value !== undefined),
+      Object.entries(patch).filter(
+        ([key, value]) => editableFields.has(key) && value !== undefined,
+      ),
     ) as Partial<Note>;
   }
 }
