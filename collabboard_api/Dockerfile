@@ -15,6 +15,7 @@ CMD ["npm", "test", "--"]
 FROM test AS builder
 
 RUN npm run build
+RUN test -f /app/dist/main.js
 
 FROM node:20-alpine
 
