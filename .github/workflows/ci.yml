@@ -200,7 +200,7 @@ jobs:
         run: |
           set +e
 
-          echo "::group::ECS service deployment state and recent events"
+          echo "===== ECS service deployment state and recent events ====="
           aws ecs describe-services \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE" \
@@ -222,9 +222,8 @@ jobs:
               events:events[0:10].{createdAt:createdAt,message:message}
             }' \
             --output json
-          echo "::endgroup::"
 
-          echo "::group::Recently stopped API tasks"
+          echo "===== Recently stopped API tasks ====="
           STOPPED_TASKS="$(aws ecs list-tasks \
             --cluster "$ECS_CLUSTER" \
             --service-name "$ECS_SERVICE" \
@@ -254,9 +253,8 @@ jobs:
           else
             echo "ECS returned no recently stopped tasks for $ECS_SERVICE."
           fi
-          echo "::endgroup::"
 
-          echo "::group::Recent API CloudWatch logs"
+          echo "===== Recent API CloudWatch logs ====="
           LOG_GROUP="$(jq -r --arg name "$CONTAINER_NAME" '
             .containerDefinitions[]
             | select(.name == $name)
@@ -268,9 +266,6 @@ jobs:
           else
             echo "No awslogs log group is configured for container $CONTAINER_NAME."
           fi
-          echo "::endgroup::"
-
-          exit 1
   deploy-front:
     name: Deploy collabboard_front to ECS
     runs-on: ubuntu-latest
