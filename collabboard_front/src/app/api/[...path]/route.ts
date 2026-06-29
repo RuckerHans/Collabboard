@@ -13,14 +13,13 @@ const HOP_BY_HOP_HEADERS = new Set([
 ]);
 
 async function proxyApiRequest(request: NextRequest, context: RouteContext) {
-  const apiBaseUrl = process.env.API_INTERNAL_URL ?? process.env.GP_API_BASE_URL;
+  const apiBaseUrl = process.env.API_INTERNAL_URL;
   if (!apiBaseUrl) {
     return NextResponse.json(
       {
         statusCode: 503,
         error: 'api_proxy_not_configured',
-        message:
-          'The frontend API proxy is not configured. Set API_INTERNAL_URL or GP_API_BASE_URL.',
+        message: 'The frontend API proxy is not configured. Set API_INTERNAL_URL.',
         method: request.method,
         path: request.nextUrl.pathname,
       },

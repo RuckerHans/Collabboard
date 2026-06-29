@@ -17,6 +17,7 @@ type BoardState = {
   addNote: (note: Note) => void;
   patchNote: (id: string, patch: Partial<Note>) => void;
   removeNote: (id: string) => void;
+  restoreDeletedNote: (id: string) => void;
   setActiveUsers: (users: ActiveUser[]) => void;
   upsertActiveUser: (user: ActiveUser) => void;
   removeActiveUser: (userId: string) => void;
@@ -39,7 +40,19 @@ export const useBoardStore = create<BoardState>((set) => ({
   deletedNotes: [],
   pending: {},
   conflict: null,
-  setBoard: (board) => set({ board }),
+  setBoard: (board) => set((state) => {
+    const changedBoard = Boolean(state.board?.id && board?.id && state.board.id !== board.id);
+    if (!changedBoard) return { board };
+    return {
+      board,
+      members: [],
+      notes: {},
+      activeUsers: [],
+      deletedNotes: [],
+      pending: {},
+      conflict: null,
+    };
+  }),
   setMembers: (members) => set({ members }),
   setNotes: (notes) => set((state) => {
     const next = Object.fromEntries(notes.map((note) => [note.id, note]));
@@ -49,7 +62,10 @@ export const useBoardStore = create<BoardState>((set) => ({
     const isSame = nextIds.length === prevIds.length && nextIds.every((id) => sameNote(prev[id], next[id]));
     return isSame ? state : { notes: next };
   }),
-  addNote: (note) => set((state) => ({ notes: { ...state.notes, [note.id]: note } })),
+  addNote: (note) => set((state) => ({
+    notes: { ...state.notes, [note.id]: note },
+    deletedNotes: state.deletedNotes.filter((deleted) => deleted.id !== note.id),
+  })),
   patchNote: (id, patch) => set((state) => {
     const note = state.notes[id];
     if (!note) return state;
@@ -58,6 +74,14 @@ export const useBoardStore = create<BoardState>((set) => ({
   removeNote: (id) => set((state) => {
     const { [id]: removed, ...notes } = state.notes;
     return { notes, deletedNotes: removed ? [removed, ...state.deletedNotes] : state.deletedNotes };
+  }),
+  restoreDeletedNote: (id) => set((state) => {
+    const restored = state.deletedNotes.find((note) => note.id === id);
+    if (!restored) return state;
+    return {
+      notes: { ...state.notes, [id]: { ...restored, deletedAt: null } },
+      deletedNotes: state.deletedNotes.filter((note) => note.id !== id),
+    };
   }),
   setActiveUsers: (activeUsers) => set({ activeUsers }),
   upsertActiveUser: (user) => set((state) => {

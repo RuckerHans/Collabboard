@@ -5,6 +5,18 @@
 -- as the table owner so they can inspect board_members without recursively
 -- invoking that table's policies.
 
+DO $role$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'collabboard_app') THEN
+    CREATE ROLE collabboard_app LOGIN;
+  END IF;
+
+  ALTER ROLE collabboard_app
+    LOGIN PASSWORD 'collabboard_app_pw123'
+    NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+END
+$role$;
+
 DO $grant_connect$
 BEGIN
   EXECUTE format(

@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, Plus, RotateCcw, Settings, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, Plus, RotateCcw, Search, Settings, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import Link from 'next/link';
 import type { ActiveUser, Board, BoardRole } from '@/src/lib/types';
 import { initials } from '@/src/lib/utils';
@@ -13,9 +13,12 @@ type Props = {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onReset: () => void;
+  search: string;
+  onSearchChange: (value: string) => void;
+  searchResultCount: number;
 };
 
-export function BoardToolbar({ board, role, activeUsers, onAdd, onZoomIn, onZoomOut, onReset }: Props) {
+export function BoardToolbar({ board, role, activeUsers, onAdd, onZoomIn, onZoomOut, onReset, search, onSearchChange, searchResultCount }: Props) {
   const editable = role === 'owner' || role === 'editor';
   return (
     <div className="absolute left-4 right-4 top-4 z-30 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
@@ -27,6 +30,28 @@ export function BoardToolbar({ board, role, activeUsers, onAdd, onZoomIn, onZoom
           <h1 className="text-base font-semibold">{board?.name ?? 'Board'}</h1>
           <p className="text-xs text-muted">Role: {role ?? 'viewer'}</p>
         </div>
+      </div>
+      <div className="order-3 w-full md:order-none md:w-64">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} />
+          <input
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Search notes"
+            aria-label="Search notes"
+            className="w-full rounded-md border border-line bg-white py-2 pl-9 pr-9 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
+          />
+          {search && (
+            <button
+              onClick={() => onSearchChange('')}
+              aria-label="Clear note search"
+              className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded text-muted hover:bg-slate-100"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        {search && <p className="mt-1 text-center text-xs text-muted">{searchResultCount} matching {searchResultCount === 1 ? 'note' : 'notes'}</p>}
       </div>
       <div className="flex items-center gap-1">
         {editable && (
@@ -49,8 +74,8 @@ export function BoardToolbar({ board, role, activeUsers, onAdd, onZoomIn, onZoom
             </span>
           ))}
         </div>
-        <Link href={`/boards/${board?.id}/trash`} className="rounded-md p-2 hover:bg-slate-100"><Trash2 size={18} /></Link>
-        <Link href={`/boards/${board?.id}/settings`} className="rounded-md p-2 hover:bg-slate-100"><Settings size={18} /></Link>
+        <Link aria-label="Open trash" title="Trash" href={`/boards/${board?.id}/trash`} className="rounded-md p-2 hover:bg-slate-100"><Trash2 size={18} /></Link>
+        <Link aria-label="Board settings" title="Settings" href={`/boards/${board?.id}/settings`} className="rounded-md p-2 hover:bg-slate-100"><Settings size={18} /></Link>
       </div>
     </div>
   );

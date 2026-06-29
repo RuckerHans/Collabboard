@@ -37,6 +37,7 @@ export default function BoardPage() {
   const [panning, setPanning] = useState(false);
   const [historyNoteId, setHistoryNoteId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [noteSearch, setNoteSearch] = useState('');
   const panStart = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const latestScale = useRef(scale);
@@ -47,6 +48,11 @@ export default function BoardPage() {
     () => Object.values(notes).sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || a.zIndex - b.zIndex),
     [notes],
   );
+  const visibleNotes = useMemo(() => {
+    const query = noteSearch.trim().toLowerCase();
+    if (!query) return noteList;
+    return noteList.filter((note) => `${note.title ?? ''} ${note.content ?? ''}`.toLowerCase().includes(query));
+  }, [noteList, noteSearch]);
 
   useEffect(() => {
     if (board) setBoard(board);
@@ -182,9 +188,12 @@ export default function BoardPage() {
           onZoomIn={() => setScale(scale + 0.1)}
           onZoomOut={() => setScale(scale - 0.1)}
           onReset={resetView}
+          search={noteSearch}
+          onSearchChange={setNoteSearch}
+          searchResultCount={visibleNotes.length}
         />
         <div className="absolute left-0 top-0 h-full w-full origin-top-left" style={{ transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale})` }}>
-          {noteList.map((note) => (
+          {visibleNotes.map((note) => (
             <StickyNoteCard
               key={note.id}
               note={note}
@@ -192,8 +201,10 @@ export default function BoardPage() {
               onSocketUpdate={updateViaSocket}
               onDelete={(id) => {
                 if (!editable) return;
-                useBoardStore.getState().removeNote(id);
-                deleteNote.mutate(id);
+                setSaveError(null);
+                deleteNote.mutate(id, {
+                  onError: (error) => setSaveError(getApiErrorMessage(error, 'Could not delete note. Your note was restored.')),
+                });
               }}
               onHistory={setHistoryNoteId}
               onMove={moveNote}

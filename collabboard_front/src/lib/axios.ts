@@ -3,7 +3,13 @@
 import axios from 'axios';
 import { useAuthStore } from '@/src/store/authStore';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api';
+function normalizeApiBaseUrl(value?: string) {
+  const configured = value?.trim().replace(/\/+$/, '');
+  if (!configured || configured === '/ap') return '/api';
+  return configured;
+}
+
+const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL);
 
 export const api = axios.create({ baseURL: API_BASE_URL });
 

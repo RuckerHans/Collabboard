@@ -61,17 +61,15 @@ services:
       context: ../collabboard_front
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:3050/api
-        NEXT_PUBLIC_SOCKET_URL: http://localhost:3050
+        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_SOCKET_URL: ""
     image: collabboard-front
     container_name: collabboard-front
     restart: unless-stopped
     environment:
-      GP_API_BASE_URL: http://api:3050
-      GP_API_KEY: ndn23n95o2345098590jfknjwebifjbfgewrt4f4tfc324t4
-      GP_COOKIE_SECURE: false
-      NEXT_PUBLIC_API_URL: http://localhost:3050/api
-      NEXT_PUBLIC_SOCKET_URL: http://localhost:3050
+      API_INTERNAL_URL: http://api:3050
+      NEXT_PUBLIC_API_URL: /api
+      NEXT_PUBLIC_SOCKET_URL: ""
     ports:
       - "3000:3000"
 

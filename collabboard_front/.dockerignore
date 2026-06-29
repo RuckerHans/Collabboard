@@ -1,3 +1,9 @@
 node_modules
 .next
+.env
 .env.local
+.git
+coverage
+npm-debug.log
+Dockerfile
+.dockerignore

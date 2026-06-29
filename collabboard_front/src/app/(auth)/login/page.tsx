@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import { PasswordField } from '@/src/components/form/PasswordField';
 import { useAuth } from '@/src/hooks/useAuth';
 import { getApiErrorMessage } from '@/src/lib/axios';
 
@@ -41,16 +42,14 @@ export default function LoginPage() {
         </label>
         {form.formState.errors.email && <p className="mt-1 text-sm text-red-600">{form.formState.errors.email.message}</p>}
 
-        <label className="mt-4 block text-sm font-medium">
-          Password
-          <input
-            type="password"
+        <div className="mt-4">
+          <PasswordField
+            label="Password"
             autoComplete="current-password"
-            className="mt-2 w-full rounded-md border border-line px-3 py-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-50"
+            error={form.formState.errors.password?.message}
             {...form.register('password')}
           />
-        </label>
-        {form.formState.errors.password && <p className="mt-1 text-sm text-red-600">{form.formState.errors.password.message}</p>}
+        </div>
 
         {login.error && (
           <p className="mt-3 rounded-md bg-red-50 p-2 text-sm text-red-700">

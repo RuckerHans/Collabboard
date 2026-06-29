@@ -74,6 +74,32 @@ describe('useBoardStore', () => {
       expect(state.deletedNotes).toHaveLength(1);
       expect(state.deletedNotes[0].id).toBe('note-1');
     });
+
+    it('restores a deleted note without duplicating it', () => {
+      useBoardStore.getState().addNote(makeNote());
+      useBoardStore.getState().removeNote('note-1');
+      useBoardStore.getState().restoreDeletedNote('note-1');
+
+      const state = useBoardStore.getState();
+      expect(state.notes['note-1']?.deletedAt).toBeNull();
+      expect(state.deletedNotes).toHaveLength(0);
+    });
+  });
+
+  describe('setBoard', () => {
+    it('clears board-scoped state when navigating to another board', () => {
+      useBoardStore.getState().setBoard({ id: 'board-1' } as any);
+      useBoardStore.getState().addNote(makeNote());
+      useBoardStore.getState().removeNote('note-1');
+
+      useBoardStore.getState().setBoard({ id: 'board-2' } as any);
+
+      const state = useBoardStore.getState();
+      expect(state.board?.id).toBe('board-2');
+      expect(state.notes).toEqual({});
+      expect(state.deletedNotes).toEqual([]);
+      expect(state.activeUsers).toEqual([]);
+    });
   });
 
   describe('optimistic update flow: rememberPending → rollbackPending', () => {
@@ -97,23 +123,23 @@ describe('useBoardStore', () => {
 
   describe('upsertActiveUser', () => {
     it('adds a new active user if not present', () => {
-      useBoardStore.getState().upsertActiveUser({ userId: 'u1', name: 'Alice' } as any);
+      useBoardStore.getState().upsertActiveUser({ userId: 'u1', username: 'Alice' } as any);
 
       expect(useBoardStore.getState().activeUsers).toHaveLength(1);
     });
 
     it('merges into an existing active user instead of duplicating', () => {
-      useBoardStore.getState().upsertActiveUser({ userId: 'u1', name: 'Alice' } as any);
-      useBoardStore.getState().upsertActiveUser({ userId: 'u1', name: 'Alice Updated' } as any);
+      useBoardStore.getState().upsertActiveUser({ userId: 'u1', username: 'Alice' } as any);
+      useBoardStore.getState().upsertActiveUser({ userId: 'u1', username: 'Alice Updated' } as any);
 
       const users = useBoardStore.getState().activeUsers;
       expect(users).toHaveLength(1);
-      expect(users[0].name).toBe('Alice Updated');
+      expect(users[0].username).toBe('Alice Updated');
     });
 
     it('ignores users with no userId', () => {
       const before = useBoardStore.getState().activeUsers;
-      useBoardStore.getState().upsertActiveUser({ userId: undefined, name: 'Ghost' } as any);
+      useBoardStore.getState().upsertActiveUser({ userId: undefined, username: 'Ghost' } as any);
 
       expect(useBoardStore.getState().activeUsers).toBe(before);
     });
