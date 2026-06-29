@@ -21,6 +21,7 @@ type ConflictBody = {
   error: 'conflict';
   current_version: number;
   current_note: NoteResponseDto;
+  attempted_patch: Partial<Note>;
 };
 
 @Injectable()
@@ -165,6 +166,7 @@ export class NotesService {
         error: 'conflict',
         current_version: current.version,
         current_note: current,
+        attempted_patch: patch,
       } satisfies ConflictBody);
     }
 

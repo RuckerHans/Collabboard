@@ -19,6 +19,7 @@ import { PresenceService } from './presence.service';
 
 type BoardBody = { boardId: string };
 type HeartbeatBody = BoardBody & { cursorX?: number; cursorY?: number };
+type CursorBody = BoardBody & { cursorX: number; cursorY: number };
 type TypingBody = BoardBody & { noteId: string };
 type NoteUpdateBody = BoardBody & { noteId: string; currentVersion: number; [key: string]: unknown };
 
@@ -50,8 +51,10 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
   async handleDisconnect(client: AuthenticatedSocket) {
     if (!client.user) return;
     const userId = client.user.id;
-    const rooms = [...client.rooms].filter((room) => room.startsWith('board:'));
-    await Promise.all(rooms.map((room) => this.presence.leaveBoard(room.replace('board:', ''), userId, client.id)));
+    const boardIds = Array.isArray(client.data.boardIds)
+      ? client.data.boardIds as string[]
+      : [];
+    await Promise.all(boardIds.map((boardId) => this.presence.leaveBoard(boardId, userId, client.id)));
   }
 
   @SubscribeMessage('join_board')
@@ -59,8 +62,13 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
     const user = await this.ensureSocketUser(client);
     const state = await this.presence.joinBoard(body.boardId, user.id, client.id);
     await client.join(this.room(body.boardId));
+    client.data.boardIds = [...new Set([...(client.data.boardIds ?? []), body.boardId])];
     client.emit('board_state', state);
-    client.to(this.room(body.boardId)).emit('user_joined', { userId: user.id });
+    client.to(this.room(body.boardId)).emit('user_joined', {
+      userId: user.id,
+      username: user.username,
+      avatarColor: user.avatarColor,
+    });
   }
 
   @SubscribeMessage('leave_board')
@@ -68,6 +76,7 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
     const user = await this.ensureSocketUser(client);
     await this.presence.leaveBoard(body.boardId, user.id, client.id);
     await client.leave(this.room(body.boardId));
+    client.data.boardIds = (client.data.boardIds ?? []).filter((boardId: string) => boardId !== body.boardId);
     client.to(this.room(body.boardId)).emit('user_left', { userId: user.id });
   }
 
@@ -77,16 +86,44 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
     await this.presence.heartbeat(body.boardId, user.id, client.id, body.cursorX, body.cursorY);
   }
 
+  @SubscribeMessage('cursor_move')
+  async cursorMove(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() body: CursorBody) {
+    const user = await this.ensureSocketUser(client);
+    if (!client.rooms.has(this.room(body.boardId))) return;
+    if (!Number.isFinite(body.cursorX) || !Number.isFinite(body.cursorY)) return;
+    client.to(this.room(body.boardId)).emit('cursor_moved', {
+      userId: user.id,
+      username: user.username,
+      avatarColor: user.avatarColor,
+      cursorX: Math.max(0, body.cursorX),
+      cursorY: Math.max(0, body.cursorY),
+    });
+  }
+
   @SubscribeMessage('typing_start')
   async typingStart(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() body: TypingBody) {
     const user = await this.ensureSocketUser(client);
     await this.presence.setTyping(body.boardId, user.id, client.id, body.noteId, true);
+    client.to(this.room(body.boardId)).emit('typing_updated', {
+      userId: user.id,
+      username: user.username,
+      avatarColor: user.avatarColor,
+      currentNoteId: body.noteId,
+      isTyping: true,
+    });
   }
 
   @SubscribeMessage('typing_stop')
   async typingStop(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() body: TypingBody) {
     const user = await this.ensureSocketUser(client);
     await this.presence.setTyping(body.boardId, user.id, client.id, body.noteId, false);
+    client.to(this.room(body.boardId)).emit('typing_updated', {
+      userId: user.id,
+      username: user.username,
+      avatarColor: user.avatarColor,
+      currentNoteId: null,
+      isTyping: false,
+    });
   }
 
   @SubscribeMessage('note_update')
@@ -94,7 +131,8 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
     const user = await this.ensureSocketUser(client);
     const { boardId, noteId, currentVersion, ...fields } = body;
     try {
-      await this.notes.updateFromSocket(boardId, noteId, currentVersion, fields, user.id);
+      const saved = await this.notes.updateFromSocket(boardId, noteId, currentVersion, fields, user.id);
+      this.server.to(this.room(boardId)).emit('note_updated', saved);
     } catch (error) {
       const response = (error as { getResponse?: () => any })?.getResponse?.();
       if (response?.error === 'conflict') {
@@ -102,10 +140,14 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
           noteId,
           currentVersion: response.current_version,
           currentNote: response.current_note,
+          attemptedPatch: response.attempted_patch ?? fields,
         });
         return;
       }
-      throw error;
+      client.emit('note_save_failed', {
+        noteId,
+        message: error instanceof Error ? error.message : 'Could not save note',
+      });
     }
   }
 
@@ -113,16 +155,31 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
   handleBoardNotify(event: BoardNotification) {
     const boardId = String(event.payload.board_id ?? event.payload.boardId ?? '');
     if (!boardId) return;
-    const operation = String(event.payload.operation ?? event.payload.event ?? '').toLowerCase();
-    const eventName = operation === 'insert' || operation === 'created' ? 'note_created' : operation === 'delete' || operation === 'deleted' ? 'note_deleted' : 'note_updated';
-    this.server.to(this.room(boardId)).emit(eventName, event.payload);
+    const table = String(event.payload.table ?? '');
+    const change = {
+      id: String(event.payload.id ?? ''),
+      operation: String(event.payload.operation ?? event.payload.event ?? '').toLowerCase(),
+    };
+    this.server.to(this.room(boardId)).emit(
+      table === 'notes' ? 'notes_invalidated' : 'board_invalidated',
+      change,
+    );
   }
 
   @OnEvent('pg.presence_events')
   handlePresenceNotify(event: BoardNotification) {
     const boardId = String(event.payload.board_id ?? event.payload.boardId ?? '');
     if (!boardId) return;
-    this.server.to(this.room(boardId)).emit('presence_updated', event.payload);
+    const operation = String(event.payload.operation ?? '').toLowerCase();
+    if (operation === 'insert') {
+      this.server.to(this.room(boardId)).emit('user_joined', {
+        userId: String(event.payload.userId ?? event.payload.user_id ?? ''),
+      });
+    } else if (operation === 'delete') {
+      this.server.to(this.room(boardId)).emit('user_left', {
+        userId: String(event.payload.userId ?? event.payload.user_id ?? ''),
+      });
+    }
   }
 
   private room(boardId: string) {
@@ -134,7 +191,12 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
     const token = this.extractToken(client);
     const payload = await this.jwt.verifyAsync<JwtPayload>(token);
     const user = await this.users.getById(payload.sub);
-    client.user = { id: user.id, email: user.email, username: user.username };
+    client.user = {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      avatarColor: user.avatarColor,
+    };
     return client.user;
   }
 

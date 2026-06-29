@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BoardToolbar } from '@/src/components/board/BoardToolbar';
 import { ConflictToast } from '@/src/components/board/ConflictToast';
 import { NoteHistoryModal } from '@/src/components/board/NoteHistoryModal';
@@ -21,7 +21,7 @@ export default function BoardPage() {
   const { user } = useAuth();
   const { data: board } = useBoard(boardId);
   const role = useRole(board, user?.id);
-  const { data: fetchedNotes, dataUpdatedAt: notesUpdatedAt, createNote, updatePosition, deleteNote } = useNotes(boardId);
+  const { data: fetchedNotes, dataUpdatedAt: notesUpdatedAt, createNote, updatePosition, updateNote, deleteNote } = useNotes(boardId);
   const socket = useBoardSocket(boardId);
   const notes = useBoardStore((state) => state.notes);
   const setBoard = useBoardStore((state) => state.setBoard);
@@ -33,6 +33,8 @@ export default function BoardPage() {
   const clearPending = useBoardStore((state) => state.clearPending);
   const conflict = useBoardStore((state) => state.conflict);
   const setConflict = useBoardStore((state) => state.setConflict);
+  const realtimeStatus = useBoardStore((state) => state.realtimeStatus);
+  const realtimeError = useBoardStore((state) => state.realtimeError);
   const { scale, offsetX, offsetY, setScale, setOffset, resetView } = useCanvasStore();
   const [panning, setPanning] = useState(false);
   const [historyNoteId, setHistoryNoteId] = useState<string | null>(null);
@@ -82,7 +84,7 @@ export default function BoardPage() {
   }, [setScale]);
 
   const sendCursor = useMemo(
-    () => throttle((cursorX: number, cursorY: number) => socket?.emit('heartbeat', { boardId, cursorX, cursorY }), 30),
+    () => throttle((cursorX: number, cursorY: number) => socket?.emit('cursor_move', { boardId, cursorX, cursorY }), 50),
     [socket, boardId],
   );
   const editable = role === 'owner' || role === 'editor';
@@ -104,8 +106,32 @@ export default function BoardPage() {
     setSaveError(null);
     rememberPending(note);
     patchNote(note.id, { ...patch, version: note.version + 1 });
-    socket?.emit('note_update', { boardId, noteId: note.id, currentVersion: note.version, ...patch });
+    if (socket?.connected) {
+      socket.emit('note_update', { boardId, noteId: note.id, currentVersion: note.version, ...patch });
+      return;
+    }
+    updateNote.mutate(
+      { id: note.id, current_version: note.version, ...patch },
+      {
+        onSuccess: (saved) => {
+          patchNote(saved.id, saved);
+          clearPending(saved.id);
+        },
+        onError: (error) => {
+          rollbackPending(note.id);
+          setSaveError(getApiErrorMessage(error, 'Could not save note.'));
+        },
+      },
+    );
   };
+  const handleTyping = useCallback(
+    (noteId: string, isTyping: boolean) => {
+      if (socket?.connected) {
+        socket.emit(isTyping ? 'typing_start' : 'typing_stop', { boardId, noteId });
+      }
+    },
+    [socket, boardId],
+  );
 
   const handlePositionError = (moved: Note, error: unknown) => {
     const response = (error as { response?: { status?: number; data?: any } }).response;
@@ -191,6 +217,7 @@ export default function BoardPage() {
           search={noteSearch}
           onSearchChange={setNoteSearch}
           searchResultCount={visibleNotes.length}
+          realtimeStatus={realtimeStatus}
         />
         <div className="absolute left-0 top-0 h-full w-full origin-top-left" style={{ transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale})` }}>
           {visibleNotes.map((note) => (
@@ -199,6 +226,7 @@ export default function BoardPage() {
               note={note}
               role={role}
               onSocketUpdate={updateViaSocket}
+              onTyping={handleTyping}
               onDelete={(id) => {
                 if (!editable) return;
                 setSaveError(null);
@@ -228,23 +256,35 @@ export default function BoardPage() {
         {historyNoteId && <NoteHistoryModal boardId={boardId} noteId={historyNoteId} onClose={() => setHistoryNoteId(null)} />}
         <ConflictToast
           onUseTheirs={() => {
-            if (conflict) patchNote(conflict.noteId, conflict.currentNote);
+            if (conflict) {
+              patchNote(conflict.noteId, conflict.currentNote);
+              clearPending(conflict.noteId);
+            }
             setConflict(null);
           }}
           onKeepMine={() => {
             if (conflict) {
+              const attemptedPatch = conflict.attemptedPatch ?? {
+                title: notes[conflict.noteId]?.title,
+                content: notes[conflict.noteId]?.content,
+              };
+              rememberPending(conflict.currentNote);
+              patchNote(conflict.noteId, {
+                ...conflict.currentNote,
+                ...attemptedPatch,
+                version: conflict.currentVersion + 1,
+              });
               socket?.emit('note_update', {
                 boardId,
                 noteId: conflict.noteId,
                 currentVersion: conflict.currentVersion,
-                title: notes[conflict.noteId]?.title,
-                content: notes[conflict.noteId]?.content,
+                ...attemptedPatch,
               });
             }
             setConflict(null);
           }}
         />
-        {saveError && <div className="absolute bottom-16 left-4 z-50 rounded-md border border-red-200 bg-white px-3 py-2 text-sm text-red-700 shadow">{saveError}</div>}
+        {(saveError || realtimeError) && <div className="absolute bottom-16 left-4 z-50 rounded-md border border-red-200 bg-white px-3 py-2 text-sm text-red-700 shadow">{saveError ?? realtimeError}</div>}
         <div className="absolute bottom-4 left-4 rounded-md bg-white px-3 py-2 text-sm text-muted shadow sm:hidden">Canvas editing works best on desktop.</div>
       </div>
     </main>

@@ -6,9 +6,16 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: 'Collabboard',
+  title: {
+    default: 'Collabboard',
+    template: '%s · Collabboard',
+  },
   description: 'Real-time collaborative sticky-note boards.',
-};
+    applicationName: 'Collabboard',
+    icons: {
+      icon: '/icon.png',
+    },
+  };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

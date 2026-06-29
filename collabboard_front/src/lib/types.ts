@@ -72,4 +72,9 @@ export type ActiveUser = {
 };
 
 export type BoardState = { notes: Note[]; members: BoardMember[]; activeUsers: ActiveUser[] };
-export type ConflictPayload = { noteId: string; currentVersion: number; currentNote: Note };
+export type ConflictPayload = {
+  noteId: string;
+  currentVersion: number;
+  currentNote: Note;
+  attemptedPatch?: Partial<Note>;
+};

@@ -17,6 +17,7 @@ type Props = {
   onMove: (note: Note, x: number, y: number) => void;
   onDelete: (id: string) => void;
   onSocketUpdate: (note: Note, patch: Partial<Note>) => void;
+  onTyping: (noteId: string, isTyping: boolean) => void;
   onHistory: (id: string) => void;
 };
 
@@ -29,7 +30,7 @@ type DragState = {
   moved: boolean;
 };
 
-export function StickyNoteCard({ note, role, onMove, onDelete, onSocketUpdate, onHistory }: Props) {
+export function StickyNoteCard({ note, role, onMove, onDelete, onSocketUpdate, onTyping, onHistory }: Props) {
   const editable = role === 'owner' || role === 'editor';
   const scale = useCanvasStore((state) => state.scale);
   const activeUsers = useBoardStore((state) => state.activeUsers);
@@ -45,6 +46,12 @@ export function StickyNoteCard({ note, role, onMove, onDelete, onSocketUpdate, o
     setTitle(note.title ?? '');
     setContent(note.content ?? '');
   }, [note.title, note.content]);
+
+  useEffect(() => {
+    if (!editing) return;
+    onTyping(note.id, true);
+    return () => onTyping(note.id, false);
+  }, [editing, note.id, onTyping]);
 
   const save = () => {
     onSocketUpdate(note, { title, content });

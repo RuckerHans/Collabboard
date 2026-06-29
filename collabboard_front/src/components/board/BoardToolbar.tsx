@@ -16,9 +16,10 @@ type Props = {
   search: string;
   onSearchChange: (value: string) => void;
   searchResultCount: number;
+  realtimeStatus: 'connecting' | 'connected' | 'disconnected';
 };
 
-export function BoardToolbar({ board, role, activeUsers, onAdd, onZoomIn, onZoomOut, onReset, search, onSearchChange, searchResultCount }: Props) {
+export function BoardToolbar({ board, role, activeUsers, onAdd, onZoomIn, onZoomOut, onReset, search, onSearchChange, searchResultCount, realtimeStatus }: Props) {
   const editable = role === 'owner' || role === 'editor';
   return (
     <div className="absolute left-4 right-4 top-4 z-30 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
@@ -28,7 +29,10 @@ export function BoardToolbar({ board, role, activeUsers, onAdd, onZoomIn, onZoom
         </Link>
         <div>
           <h1 className="text-base font-semibold">{board?.name ?? 'Board'}</h1>
-          <p className="text-xs text-muted">Role: {role ?? 'viewer'}</p>
+          <p className="flex items-center gap-1.5 text-xs text-muted">
+            <span className={`h-2 w-2 rounded-full ${realtimeStatus === 'connected' ? 'bg-emerald-500' : realtimeStatus === 'connecting' ? 'bg-amber-400' : 'bg-slate-400'}`} />
+            {realtimeStatus === 'connected' ? 'Live' : realtimeStatus === 'connecting' ? 'Connecting' : 'Offline'} · {role ?? 'viewer'}
+          </p>
         </div>
       </div>
       <div className="order-3 w-full md:order-none md:w-64">

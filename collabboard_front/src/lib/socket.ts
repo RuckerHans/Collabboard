@@ -10,12 +10,15 @@ export function getSocket(token?: string | null) {
     socket = io(process.env.NEXT_PUBLIC_SOCKET_URL ?? getDefaultSocketUrl(), {
       autoConnect: false,
       auth: { token: authToken ?? '' },
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
     });
   }
   socket.auth = { token: authToken ?? '' };
-  if (!socket.connected) socket.connect();
   return socket;
 }
 

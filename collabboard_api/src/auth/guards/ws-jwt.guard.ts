@@ -10,7 +10,7 @@ import { UsersService } from '../../users/users.service';
 import { JwtPayload } from '../auth.service';
 
 export type AuthenticatedSocket = Socket & {
-  user?: { id: string; email: string; username: string };
+  user?: { id: string; email: string; username: string; avatarColor: string };
 };
 
 @Injectable()
@@ -28,7 +28,12 @@ export class WsJwtGuard implements CanActivate {
     }
     const payload = await this.jwt.verifyAsync<JwtPayload>(token);
     const user = await this.users.getById(payload.sub);
-    client.user = { id: user.id, email: user.email, username: user.username };
+    client.user = {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      avatarColor: user.avatarColor,
+    };
     return true;
   }
 

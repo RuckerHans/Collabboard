@@ -11,6 +11,8 @@ type BoardState = {
   deletedNotes: Note[];
   pending: Record<string, Note>;
   conflict: ConflictPayload | null;
+  realtimeStatus: 'connecting' | 'connected' | 'disconnected';
+  realtimeError: string | null;
   setBoard: (board: Board | null) => void;
   setMembers: (members: BoardMember[]) => void;
   setNotes: (notes: Note[]) => void;
@@ -25,6 +27,8 @@ type BoardState = {
   rollbackPending: (id: string) => void;
   clearPending: (id: string) => void;
   setConflict: (conflict: ConflictPayload | null) => void;
+  setRealtimeStatus: (status: BoardState['realtimeStatus']) => void;
+  setRealtimeError: (error: string | null) => void;
 };
 
 function sameNote(a?: Note, b?: Note) {
@@ -40,6 +44,8 @@ export const useBoardStore = create<BoardState>((set) => ({
   deletedNotes: [],
   pending: {},
   conflict: null,
+  realtimeStatus: 'disconnected',
+  realtimeError: null,
   setBoard: (board) => set((state) => {
     const changedBoard = Boolean(state.board?.id && board?.id && state.board.id !== board.id);
     if (!changedBoard) return { board };
@@ -51,6 +57,7 @@ export const useBoardStore = create<BoardState>((set) => ({
       deletedNotes: [],
       pending: {},
       conflict: null,
+      realtimeError: null,
     };
   }),
   setMembers: (members) => set({ members }),
@@ -63,12 +70,18 @@ export const useBoardStore = create<BoardState>((set) => ({
     return isSame ? state : { notes: next };
   }),
   addNote: (note) => set((state) => ({
-    notes: { ...state.notes, [note.id]: note },
+    notes: {
+      ...state.notes,
+      [note.id]: state.notes[note.id] && state.notes[note.id].version > note.version
+        ? state.notes[note.id]
+        : note,
+    },
     deletedNotes: state.deletedNotes.filter((deleted) => deleted.id !== note.id),
   })),
   patchNote: (id, patch) => set((state) => {
     const note = state.notes[id];
     if (!note) return state;
+    if (patch.version !== undefined && patch.version < note.version) return state;
     return { notes: { ...state.notes, [id]: { ...note, ...patch } } };
   }),
   removeNote: (id) => set((state) => {
@@ -103,4 +116,6 @@ export const useBoardStore = create<BoardState>((set) => ({
     return { pending };
   }),
   setConflict: (conflict) => set({ conflict }),
+  setRealtimeStatus: (realtimeStatus) => set({ realtimeStatus }),
+  setRealtimeError: (realtimeError) => set({ realtimeError }),
 }));

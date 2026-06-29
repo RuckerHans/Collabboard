@@ -34,6 +34,8 @@ describe('useBoardStore', () => {
       deletedNotes: [],
       pending: {},
       conflict: null,
+      realtimeStatus: 'disconnected',
+      realtimeError: null,
     });
   });
 
@@ -61,6 +63,14 @@ describe('useBoardStore', () => {
       useBoardStore.getState().patchNote('ghost-id', { title: 'x' });
 
       expect(useBoardStore.getState().notes).toBe(before); // same reference, no change
+    });
+
+    it('ignores realtime updates older than the local note version', () => {
+      useBoardStore.getState().addNote(makeNote({ version: 4, title: 'Newest' }));
+      useBoardStore.getState().patchNote('note-1', { version: 3, title: 'Stale' });
+
+      expect(useBoardStore.getState().notes['note-1'].title).toBe('Newest');
+      expect(useBoardStore.getState().notes['note-1'].version).toBe(4);
     });
   });
 

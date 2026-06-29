@@ -1,5 +1,6 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { useSocket } from '@/src/hooks/useSocket';
 import type { ActiveUser, BoardState, ConflictPayload, Note } from '@/src/lib/types';
@@ -92,6 +93,7 @@ function normalizePresence(payload: any): ActiveUser | null {
 
 export function useBoardSocket(boardId: string) {
   const socket = useSocket();
+  const queryClient = useQueryClient();
   const setNotes = useBoardStore((state) => state.setNotes);
   const setMembers = useBoardStore((state) => state.setMembers);
   const addNote = useBoardStore((state) => state.addNote);
@@ -101,30 +103,44 @@ export function useBoardSocket(boardId: string) {
   const upsertActiveUser = useBoardStore((state) => state.upsertActiveUser);
   const removeActiveUser = useBoardStore((state) => state.removeActiveUser);
   const setConflict = useBoardStore((state) => state.setConflict);
-  const currentBoard = useRef(boardId);
-  const joinedBoard = useRef<string | null>(null);
-  currentBoard.current = boardId;
+  const clearPending = useBoardStore((state) => state.clearPending);
+  const rollbackPending = useBoardStore((state) => state.rollbackPending);
+  const setRealtimeStatus = useBoardStore((state) => state.setRealtimeStatus);
+  const setRealtimeError = useBoardStore((state) => state.setRealtimeError);
+  const invalidationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!socket || !boardId) return;
 
     const join = () => {
-      if (joinedBoard.current === boardId && socket.connected) return;
       socket.emit('join_board', { boardId });
-      joinedBoard.current = boardId;
+      setRealtimeStatus('connected');
     };
     const boardState = (state: BoardState) => {
-      setNotes((state.notes ?? []).map((note) => normalizeFullNote(note)).filter((note): note is Note => Boolean(note)));
+      const normalizedNotes = (state.notes ?? []).map((note) => normalizeFullNote(note)).filter((note): note is Note => Boolean(note));
+      setNotes(normalizedNotes);
       setMembers(state.members ?? []);
       setActiveUsers(state.activeUsers ?? []);
+      queryClient.setQueryData(['notes', boardId], normalizedNotes);
+      setRealtimeError(null);
     };
     const noteCreated = (payload: any) => {
       const note = normalizeFullNote(payload);
-      if (note) addNote(note);
+      if (note) {
+        addNote(note);
+        queryClient.setQueryData<Note[]>(['notes', boardId], (current = []) => [...current.filter((item) => item.id !== note.id), note]);
+      }
     };
     const noteUpdated = (payload: any) => {
       const normalized = normalizeNotePatch(payload);
-      if (normalized && Object.keys(normalized.patch).length > 0) patchNote(normalized.id, normalized.patch);
+      if (normalized && Object.keys(normalized.patch).length > 0) {
+        patchNote(normalized.id, normalized.patch);
+        clearPending(normalized.id);
+        queryClient.setQueryData<Note[]>(['notes', boardId], (current = []) =>
+          current.map((note) => note.id === normalized.id ? { ...note, ...normalized.patch } : note),
+        );
+        setRealtimeError(null);
+      }
     };
     const noteDeleted = (payload: any) => {
       const id = noteIdFromPayload(payload);
@@ -138,39 +154,114 @@ export function useBoardSocket(boardId: string) {
       const active = normalizePresence(payload);
       if (active) upsertActiveUser(active);
     };
-    const userJoined = (payload: { userId?: string }) => {
-      if (payload.userId) upsertActiveUser({ userId: payload.userId, username: 'Online', avatarColor: '#64748b' });
+    const cursorMoved = (payload: ActiveUser) => {
+      const active = normalizePresence(payload);
+      if (active) upsertActiveUser(active);
+    };
+    const typingUpdated = (payload: ActiveUser) => {
+      const active = normalizePresence(payload);
+      if (active) upsertActiveUser(active);
+    };
+    const userJoined = (payload: Partial<ActiveUser> & { userId?: string }) => {
+      if (payload.userId) {
+        upsertActiveUser({
+          userId: payload.userId,
+          username: payload.username ?? 'Online',
+          avatarColor: payload.avatarColor ?? '#64748b',
+        });
+      }
     };
     const userLeft = (payload: { userId?: string }) => {
       if (payload.userId) removeActiveUser(payload.userId);
     };
-    const conflict = (payload: ConflictPayload) => setConflict(payload);
+    const conflict = (payload: ConflictPayload) => {
+      const original = useBoardStore.getState().pending[payload.noteId];
+      const attemptedPatch = payload.attemptedPatch ?? {};
+      const attemptedFields = Object.keys(attemptedPatch) as Array<keyof Note>;
+      const canAutoMerge = Boolean(
+        original
+        && attemptedFields.length > 0
+        && attemptedFields.every((field) => original[field] === payload.currentNote[field]),
+      );
+
+      if (canAutoMerge) {
+        useBoardStore.getState().rememberPending(payload.currentNote);
+        patchNote(payload.noteId, {
+          ...payload.currentNote,
+          ...attemptedPatch,
+          version: payload.currentVersion + 1,
+        });
+        socket.emit('note_update', {
+          boardId,
+          noteId: payload.noteId,
+          currentVersion: payload.currentVersion,
+          ...attemptedPatch,
+        });
+        return;
+      }
+
+      setConflict(payload);
+    };
+    const saveFailed = (payload: { noteId?: string; message?: string }) => {
+      if (payload.noteId) rollbackPending(payload.noteId);
+      setRealtimeError(payload.message ?? 'A realtime update could not be saved.');
+    };
+    const invalidateNotes = () => {
+      if (invalidationTimer.current) clearTimeout(invalidationTimer.current);
+      invalidationTimer.current = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['notes', boardId] });
+      }, 100);
+    };
+    const invalidateBoard = () => {
+      queryClient.invalidateQueries({ queryKey: ['board', boardId] });
+      queryClient.invalidateQueries({ queryKey: ['boards'] });
+    };
+    const disconnected = () => setRealtimeStatus('disconnected');
+    const connectionError = () => {
+      setRealtimeStatus('disconnected');
+      setRealtimeError('Realtime connection lost. Changes will use the API until it reconnects.');
+    };
 
     socket.on('connect', join);
+    socket.on('disconnect', disconnected);
+    socket.on('connect_error', connectionError);
     socket.on('board_state', boardState);
     socket.on('note_created', noteCreated);
     socket.on('note_updated', noteUpdated);
     socket.on('note_deleted', noteDeleted);
     socket.on('presence_updated', presenceUpdated);
+    socket.on('cursor_moved', cursorMoved);
+    socket.on('typing_updated', typingUpdated);
     socket.on('user_joined', userJoined);
     socket.on('user_left', userLeft);
     socket.on('note_conflict', conflict);
-    join();
+    socket.on('note_save_failed', saveFailed);
+    socket.on('notes_invalidated', invalidateNotes);
+    socket.on('board_invalidated', invalidateBoard);
+    setRealtimeStatus(socket.connected ? 'connected' : 'connecting');
+    if (socket.connected) join();
 
     return () => {
-      socket.emit('leave_board', { boardId: currentBoard.current });
-      joinedBoard.current = null;
+      if (socket.connected) socket.emit('leave_board', { boardId });
+      if (invalidationTimer.current) clearTimeout(invalidationTimer.current);
       socket.off('connect', join);
+      socket.off('disconnect', disconnected);
+      socket.off('connect_error', connectionError);
       socket.off('board_state', boardState);
       socket.off('note_created', noteCreated);
       socket.off('note_updated', noteUpdated);
       socket.off('note_deleted', noteDeleted);
       socket.off('presence_updated', presenceUpdated);
+      socket.off('cursor_moved', cursorMoved);
+      socket.off('typing_updated', typingUpdated);
       socket.off('user_joined', userJoined);
       socket.off('user_left', userLeft);
       socket.off('note_conflict', conflict);
+      socket.off('note_save_failed', saveFailed);
+      socket.off('notes_invalidated', invalidateNotes);
+      socket.off('board_invalidated', invalidateBoard);
     };
-  }, [socket, boardId, setNotes, setMembers, addNote, patchNote, removeNote, setActiveUsers, upsertActiveUser, removeActiveUser, setConflict]);
+  }, [socket, boardId, queryClient, setNotes, setMembers, addNote, patchNote, removeNote, setActiveUsers, upsertActiveUser, removeActiveUser, setConflict, clearPending, rollbackPending, setRealtimeStatus, setRealtimeError]);
 
   return socket;
 }
