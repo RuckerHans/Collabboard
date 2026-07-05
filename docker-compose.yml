@@ -42,7 +42,6 @@ services:
       context: ./collabboard_api
       dockerfile: Dockerfile
     image: nest-api
-    container_name: collabboard-api
     restart: unless-stopped
     depends_on:
       postgres:
@@ -65,8 +64,8 @@ services:
       GOOGLE_CLIENT_ID: ""
       GOOGLE_CLIENT_SECRET: ""
       GOOGLE_CALLBACK_URL: http://localhost/api/auth/google/callback
-    ports:
-      - "3050:3050"
+    expose:
+      - "3050"
 
   front:
     build:
