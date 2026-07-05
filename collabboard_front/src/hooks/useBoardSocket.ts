@@ -6,6 +6,10 @@ import { useSocket } from '@/src/hooks/useSocket';
 import type { ActiveUser, BoardState, ConflictPayload, Note } from '@/src/lib/types';
 import { useBoardStore } from '@/src/store/boardStore';
 
+type BoardStateWithLocks = BoardState & {
+  noteLocks?: Record<string, { userId: string; username: string }>;
+};
+
 function pickNotePayload(payload: any) {
   return payload?.after_snapshot ?? payload?.afterSnapshot ?? payload?.note ?? payload;
 }
@@ -102,6 +106,9 @@ export function useBoardSocket(boardId: string) {
   const setActiveUsers = useBoardStore((state) => state.setActiveUsers);
   const upsertActiveUser = useBoardStore((state) => state.upsertActiveUser);
   const removeActiveUser = useBoardStore((state) => state.removeActiveUser);
+  const setNoteLocks = useBoardStore((state) => state.setNoteLocks);
+  const setNoteLock = useBoardStore((state) => state.setNoteLock);
+  const clearNoteLock = useBoardStore((state) => state.clearNoteLock);
   const setConflict = useBoardStore((state) => state.setConflict);
   const clearPending = useBoardStore((state) => state.clearPending);
   const rollbackPending = useBoardStore((state) => state.rollbackPending);
@@ -116,11 +123,12 @@ export function useBoardSocket(boardId: string) {
       socket.emit('join_board', { boardId });
       setRealtimeStatus('connected');
     };
-    const boardState = (state: BoardState) => {
+    const boardState = (state: BoardStateWithLocks) => {
       const normalizedNotes = (state.notes ?? []).map((note) => normalizeFullNote(note)).filter((note): note is Note => Boolean(note));
       setNotes(normalizedNotes);
       setMembers(state.members ?? []);
       setActiveUsers(state.activeUsers ?? []);
+      setNoteLocks(state.noteLocks ?? {});
       queryClient.setQueryData(['notes', boardId], normalizedNotes);
       setRealtimeError(null);
     };
@@ -173,6 +181,27 @@ export function useBoardSocket(boardId: string) {
     };
     const userLeft = (payload: { userId?: string }) => {
       if (payload.userId) removeActiveUser(payload.userId);
+    };
+    const noteLocked = (payload: { noteId?: string; userId?: string; username?: string }) => {
+      if (payload.noteId && payload.userId) {
+        setNoteLock(payload.noteId, payload.userId, payload.username ?? 'Another user');
+      }
+    };
+    const noteUnlocked = (payload: { noteId?: string }) => {
+      if (payload.noteId) clearNoteLock(payload.noteId);
+    };
+    const noteLockDenied = (payload: { noteId?: string; heldBy?: string | null }) => {
+      if (!payload.noteId) return;
+      if (!payload.heldBy) {
+        clearNoteLock(payload.noteId);
+        return;
+      }
+      const holder = useBoardStore.getState().activeUsers.find((active) => active.userId === payload.heldBy);
+      setNoteLock(payload.noteId, payload.heldBy, holder?.username ?? 'Another user');
+    };
+    const noteLockConflict = (payload: { noteId?: string; heldBy?: string | null }) => {
+      if (payload.noteId) rollbackPending(payload.noteId);
+      setRealtimeError('Someone else started editing this note.');
     };
     const conflict = (payload: ConflictPayload) => {
       const original = useBoardStore.getState().pending[payload.noteId];
@@ -234,6 +263,10 @@ export function useBoardSocket(boardId: string) {
     socket.on('typing_updated', typingUpdated);
     socket.on('user_joined', userJoined);
     socket.on('user_left', userLeft);
+    socket.on('note_locked', noteLocked);
+    socket.on('note_unlocked', noteUnlocked);
+    socket.on('note_lock_denied', noteLockDenied);
+    socket.on('note_lock_conflict', noteLockConflict);
     socket.on('note_conflict', conflict);
     socket.on('note_save_failed', saveFailed);
     socket.on('notes_invalidated', invalidateNotes);
@@ -256,12 +289,16 @@ export function useBoardSocket(boardId: string) {
       socket.off('typing_updated', typingUpdated);
       socket.off('user_joined', userJoined);
       socket.off('user_left', userLeft);
+      socket.off('note_locked', noteLocked);
+      socket.off('note_unlocked', noteUnlocked);
+      socket.off('note_lock_denied', noteLockDenied);
+      socket.off('note_lock_conflict', noteLockConflict);
       socket.off('note_conflict', conflict);
       socket.off('note_save_failed', saveFailed);
       socket.off('notes_invalidated', invalidateNotes);
       socket.off('board_invalidated', invalidateBoard);
     };
-  }, [socket, boardId, queryClient, setNotes, setMembers, addNote, patchNote, removeNote, setActiveUsers, upsertActiveUser, removeActiveUser, setConflict, clearPending, rollbackPending, setRealtimeStatus, setRealtimeError]);
+  }, [socket, boardId, queryClient, setNotes, setMembers, addNote, patchNote, removeNote, setActiveUsers, upsertActiveUser, removeActiveUser, setNoteLocks, setNoteLock, clearNoteLock, setConflict, clearPending, rollbackPending, setRealtimeStatus, setRealtimeError]);
 
   return socket;
 }

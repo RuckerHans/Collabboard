@@ -14,6 +14,7 @@ import { Server } from 'socket.io';
 import { JwtPayload } from '../auth/auth.service';
 import type { AuthenticatedSocket } from '../auth/guards/ws-jwt.guard';
 import type { BoardNotification } from '../database/pg-notify.service';
+import { NoteLockService } from '../notes/note-lock.service';
 import { NotesService } from '../notes/notes.service';
 import { UsersService } from '../users/users.service';
 import { PresenceService } from './presence.service';
@@ -22,6 +23,7 @@ type BoardBody = { boardId: string };
 type HeartbeatBody = BoardBody & { cursorX?: number; cursorY?: number };
 type CursorBody = BoardBody & { cursorX: number; cursorY: number };
 type TypingBody = BoardBody & { noteId: string };
+type NoteLockBody = BoardBody & { noteId: string };
 type NoteUpdateBody = BoardBody & {
   noteId: string;
   currentVersion: number;
@@ -45,6 +47,7 @@ export class PresenceGateway
     private readonly users: UsersService,
     private readonly presence: PresenceService,
     private readonly notes: NotesService,
+    private readonly noteLocks: NoteLockService,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket) {
@@ -64,6 +67,18 @@ export class PresenceGateway
     await Promise.all(
       boardIds.map((boardId) =>
         this.presence.leaveBoard(boardId, userId, client.id),
+      ),
+    );
+    const locksByBoard = client.data.lockedNotesByBoard ?? {};
+    await Promise.all(
+      Object.entries(locksByBoard).flatMap(([boardId, noteIds]) =>
+        noteIds.map(async (noteId) => {
+          if (await this.noteLocks.release(noteId, userId)) {
+            this.server
+              .to(this.room(boardId))
+              .emit('note_unlocked', { noteId });
+          }
+        }),
       ),
     );
   }
@@ -144,13 +159,16 @@ export class PresenceGateway
     @MessageBody() body: TypingBody,
   ) {
     const user = await this.ensureSocketUser(client);
-    await this.presence.setTyping(
-      body.boardId,
-      user.id,
-      client.id,
-      body.noteId,
-      true,
-    );
+    await Promise.all([
+      this.presence.setTyping(
+        body.boardId,
+        user.id,
+        client.id,
+        body.noteId,
+        true,
+      ),
+      this.noteLocks.renew(body.noteId, user.id),
+    ]);
     client.to(this.room(body.boardId)).emit('typing_updated', {
       userId: user.id,
       username: user.username,
@@ -182,6 +200,51 @@ export class PresenceGateway
     });
   }
 
+  @SubscribeMessage('note_lock_request')
+  async noteLockRequest(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() body: NoteLockBody,
+  ): Promise<void> {
+    const user = await this.ensureSocketUser(client);
+    if (!client.rooms.has(this.room(body.boardId))) {
+      client.emit('note_lock_denied', {
+        noteId: body.noteId,
+        heldBy: null,
+      });
+      return;
+    }
+    const acquired = await this.noteLocks.acquire(body.noteId, user.id);
+    if (!acquired) {
+      client.emit('note_lock_denied', {
+        noteId: body.noteId,
+        heldBy: await this.noteLocks.holder(body.noteId),
+      });
+      return;
+    }
+
+    this.trackSocketLock(client, body.boardId, body.noteId);
+    this.server.to(this.room(body.boardId)).emit('note_locked', {
+      noteId: body.noteId,
+      userId: user.id,
+      username: user.username,
+    });
+  }
+
+  @SubscribeMessage('note_lock_release')
+  async noteLockRelease(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() body: NoteLockBody,
+  ): Promise<void> {
+    const user = await this.ensureSocketUser(client);
+    const released = await this.noteLocks.release(body.noteId, user.id);
+    if (!released) return;
+
+    this.untrackSocketLock(client, body.boardId, body.noteId);
+    this.server
+      .to(this.room(body.boardId))
+      .emit('note_unlocked', { noteId: body.noteId });
+  }
+
   @SubscribeMessage('note_update')
   async noteUpdate(
     @ConnectedSocket() client: AuthenticatedSocket,
@@ -201,6 +264,13 @@ export class PresenceGateway
     } catch (error) {
       const response =
         error instanceof HttpException ? error.getResponse() : undefined;
+      if (this.isRecord(response) && response.error === 'locked') {
+        client.emit('note_lock_conflict', {
+          noteId,
+          heldBy: response.heldBy,
+        });
+        return;
+      }
       if (this.isRecord(response) && response.error === 'conflict') {
         client.emit('note_conflict', {
           noteId,
@@ -218,7 +288,7 @@ export class PresenceGateway
   }
 
   @OnEvent('pg.board_events')
-  handleBoardNotify(event: BoardNotification) {
+  async handleBoardNotify(event: BoardNotification): Promise<void> {
     const boardId = this.valueAsString(
       event.payload.board_id ?? event.payload.boardId ?? '',
     );
@@ -230,6 +300,19 @@ export class PresenceGateway
         event.payload.operation ?? event.payload.event ?? '',
       ).toLowerCase(),
     };
+    if (table === 'notes' && change.operation === 'update') return;
+    if (table === 'board_members' && change.operation === 'delete') {
+      const userId = this.valueAsString(
+        event.payload.userId ?? event.payload.user_id,
+      );
+      if (userId) {
+        await Promise.all([
+          this.presence.removeUser(boardId, userId),
+          this.kickBoardMember(boardId, userId),
+        ]);
+      }
+    }
+
     this.server
       .to(this.room(boardId))
       .emit(
@@ -262,6 +345,64 @@ export class PresenceGateway
 
   private room(boardId: string) {
     return `board:${boardId}`;
+  }
+
+  private async kickBoardMember(
+    boardId: string,
+    userId: string,
+  ): Promise<void> {
+    const room = this.room(boardId);
+    const sockets = [...this.server.sockets.sockets.values()];
+    const lockedNoteIds = new Set<string>();
+
+    await Promise.all(
+      sockets.map(async (socket) => {
+        const client = socket as unknown as AuthenticatedSocket;
+        if (client.user?.id !== userId || !client.rooms.has(room)) return;
+
+        for (const noteId of client.data.lockedNotesByBoard?.[boardId] ?? []) {
+          lockedNoteIds.add(noteId);
+        }
+        await client.leave(room);
+        client.data.boardIds = (client.data.boardIds ?? []).filter(
+          (joinedBoardId) => joinedBoardId !== boardId,
+        );
+        if (client.data.lockedNotesByBoard) {
+          delete client.data.lockedNotesByBoard[boardId];
+        }
+        client.emit('board_access_revoked', { boardId });
+      }),
+    );
+
+    for (const noteId of lockedNoteIds) {
+      if (await this.noteLocks.release(noteId, userId)) {
+        this.server.to(room).emit('note_unlocked', { noteId });
+      }
+    }
+    this.server.to(room).emit('user_left', { userId });
+  }
+
+  private trackSocketLock(
+    client: AuthenticatedSocket,
+    boardId: string,
+    noteId: string,
+  ): void {
+    const locksByBoard = (client.data.lockedNotesByBoard ??= {});
+    locksByBoard[boardId] = [
+      ...new Set([...(locksByBoard[boardId] ?? []), noteId]),
+    ];
+  }
+
+  private untrackSocketLock(
+    client: AuthenticatedSocket,
+    boardId: string,
+    noteId: string,
+  ): void {
+    const locksByBoard = client.data.lockedNotesByBoard;
+    if (!locksByBoard) return;
+    locksByBoard[boardId] = (locksByBoard[boardId] ?? []).filter(
+      (lockedNoteId) => lockedNoteId !== noteId,
+    );
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

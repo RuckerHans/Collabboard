@@ -64,6 +64,10 @@ jobs:
           "
           PGPASSWORD=collabboard123 psql -h localhost -U collabboard -d collabboard \
             -f migrations/002_enable_rls.sql
+          PGPASSWORD=collabboard123 psql -h localhost -U collabboard -d collabboard \
+            -f migrations/003_notify_board_member_changes.sql
+          PGPASSWORD=collabboard123 psql -h localhost -U collabboard -d collabboard \
+            -f migrations/004_drop_presence_table.sql
 
       - name: Lint
         working-directory: collabboard_api

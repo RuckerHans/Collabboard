@@ -1,9 +1,11 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Check, Grip, Pin, Trash2, X } from 'lucide-react';
+import { Check, Grip, Lock, Pin, Trash2, X } from 'lucide-react';
 import { PointerEvent, useEffect, useRef, useState } from 'react';
+import { useSocket } from '@/src/hooks/useSocket';
 import type { BoardRole, Note } from '@/src/lib/types';
+import { useAuthStore } from '@/src/store/authStore';
 import { useBoardStore } from '@/src/store/boardStore';
 import { useCanvasStore } from '@/src/store/canvasStore';
 
@@ -32,8 +34,14 @@ type DragState = {
 
 export function StickyNoteCard({ note, role, onMove, onDelete, onSocketUpdate, onTyping, onHistory }: Props) {
   const editable = role === 'owner' || role === 'editor';
+  const user = useAuthStore((state) => state.user);
+  const socket = useSocket();
   const scale = useCanvasStore((state) => state.scale);
   const activeUsers = useBoardStore((state) => state.activeUsers);
+  const noteLocks = useBoardStore((state) => state.noteLocks);
+  const noteLock = noteLocks[note.id];
+  const lockedByOther = Boolean(noteLock && noteLock.userId !== user?.id);
+  const lockHolder = activeUsers.find((active) => active.userId === noteLock?.userId);
   const typing = activeUsers.find((user) => user.currentNoteId === note.id && user.isTyping);
   const [editing, setEditing] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -41,6 +49,7 @@ export function StickyNoteCard({ note, role, onMove, onDelete, onSocketUpdate, o
   const [title, setTitle] = useState(note.title ?? '');
   const [content, setContent] = useState(note.content ?? '');
   const drag = useRef<DragState | null>(null);
+  const lockRequested = useRef(false);
 
   useEffect(() => {
     setTitle(note.title ?? '');
@@ -50,15 +59,45 @@ export function StickyNoteCard({ note, role, onMove, onDelete, onSocketUpdate, o
   useEffect(() => {
     if (!editing) return;
     onTyping(note.id, true);
-    return () => onTyping(note.id, false);
-  }, [editing, note.id, onTyping]);
+    return () => {
+      onTyping(note.id, false);
+      socket?.emit('note_lock_release', {
+        boardId: note.boardId,
+        noteId: note.id,
+      });
+    };
+  }, [editing, note.boardId, note.id, onTyping, socket]);
+
+  useEffect(() => {
+    if (!lockRequested.current || noteLock?.userId !== user?.id) return;
+    lockRequested.current = false;
+    setEditing(true);
+  }, [noteLock?.userId, user?.id]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const denied = (payload: { noteId?: string }) => {
+      if (payload.noteId === note.id) lockRequested.current = false;
+    };
+    const interrupted = (payload: { noteId?: string }) => {
+      if (payload.noteId !== note.id) return;
+      lockRequested.current = false;
+      setEditing(false);
+    };
+    socket.on('note_lock_denied', denied);
+    socket.on('note_lock_conflict', interrupted);
+    return () => {
+      socket.off('note_lock_denied', denied);
+      socket.off('note_lock_conflict', interrupted);
+    };
+  }, [note.id, socket]);
 
   const save = () => {
     onSocketUpdate(note, { title, content });
     setEditing(false);
   };
 
-  const canDrag = editable && !note.isPinned && !editing;
+  const canDrag = editable && !note.isPinned && !editing && !lockedByOther;
   const visualX = draftPosition?.x ?? clampPosition(note.positionX);
   const visualY = draftPosition?.y ?? clampPosition(note.positionY);
 
@@ -117,6 +156,15 @@ export function StickyNoteCard({ note, role, onMove, onDelete, onSocketUpdate, o
     onMove(note, nextX, nextY);
   };
 
+  const requestEditLock = () => {
+    if (!editable || editing || lockedByOther || lockRequested.current || !socket?.connected) return;
+    lockRequested.current = true;
+    socket.emit('note_lock_request', {
+      boardId: note.boardId,
+      noteId: note.id,
+    });
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.96 }}
@@ -131,7 +179,7 @@ export function StickyNoteCard({ note, role, onMove, onDelete, onSocketUpdate, o
         background: note.color ?? '#fef3c7',
         zIndex: dragging ? 9999 : note.zIndex,
       }}
-      onDoubleClick={() => editable && setEditing(true)}
+      onDoubleClick={requestEditLock}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
         <button
@@ -190,6 +238,16 @@ export function StickyNoteCard({ note, role, onMove, onDelete, onSocketUpdate, o
         </div>
       )}
       {typing && <div className="mt-2 text-xs font-medium text-slate-600">{typing.username} is typing...</div>}
+      {lockedByOther && (
+        <div className="mt-2 flex items-center gap-1 text-xs font-medium text-slate-600">
+          <Lock size={12} />
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ backgroundColor: lockHolder?.avatarColor ?? '#64748b' }}
+          />
+          {noteLock.username} is editing
+        </div>
+      )}
     </motion.div>
   );
 }

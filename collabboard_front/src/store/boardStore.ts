@@ -8,6 +8,7 @@ type BoardState = {
   members: BoardMember[];
   notes: Record<string, Note>;
   activeUsers: ActiveUser[];
+  noteLocks: Record<string, { userId: string; username: string }>;
   deletedNotes: Note[];
   pending: Record<string, Note>;
   conflict: ConflictPayload | null;
@@ -23,6 +24,9 @@ type BoardState = {
   setActiveUsers: (users: ActiveUser[]) => void;
   upsertActiveUser: (user: ActiveUser) => void;
   removeActiveUser: (userId: string) => void;
+  setNoteLocks: (locks: Record<string, { userId: string; username: string }>) => void;
+  setNoteLock: (noteId: string, userId: string, username: string) => void;
+  clearNoteLock: (noteId: string) => void;
   rememberPending: (note: Note) => void;
   rollbackPending: (id: string) => void;
   clearPending: (id: string) => void;
@@ -41,6 +45,7 @@ export const useBoardStore = create<BoardState>((set) => ({
   members: [],
   notes: {},
   activeUsers: [],
+  noteLocks: {},
   deletedNotes: [],
   pending: {},
   conflict: null,
@@ -54,6 +59,7 @@ export const useBoardStore = create<BoardState>((set) => ({
       members: [],
       notes: {},
       activeUsers: [],
+      noteLocks: {},
       deletedNotes: [],
       pending: {},
       conflict: null,
@@ -104,6 +110,17 @@ export const useBoardStore = create<BoardState>((set) => ({
     return { activeUsers: state.activeUsers.map((active) => active.userId === user.userId ? { ...active, ...user } : active) };
   }),
   removeActiveUser: (userId) => set((state) => ({ activeUsers: state.activeUsers.filter((user) => user.userId !== userId) })),
+  setNoteLocks: (noteLocks) => set({ noteLocks }),
+  setNoteLock: (noteId, userId, username) => set((state) => ({
+    noteLocks: {
+      ...state.noteLocks,
+      [noteId]: { userId, username },
+    },
+  })),
+  clearNoteLock: (noteId) => set((state) => {
+    const { [noteId]: _removed, ...noteLocks } = state.noteLocks;
+    return { noteLocks };
+  }),
   rememberPending: (note) => set((state) => ({ pending: { ...state.pending, [note.id]: note } })),
   rollbackPending: (id) => set((state) => {
     const original = state.pending[id];

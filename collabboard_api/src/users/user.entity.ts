@@ -4,7 +4,6 @@ import { BoardMember } from '../boards/board-member.entity';
 import { Board } from '../boards/board.entity';
 import { NoteHistory } from '../notes/note-history.entity';
 import { Note } from '../notes/note.entity';
-import { ActiveBoardUser } from '../presence/active-board-user.entity';
 
 @Entity('users')
 export class User {
@@ -44,7 +43,4 @@ export class User {
 
   @OneToMany(() => NoteHistory, (history) => history.changedByUser)
   noteHistory!: NoteHistory[];
-
-  @OneToMany(() => ActiveBoardUser, (active) => active.user)
-  activeBoards!: ActiveBoardUser[];
 }

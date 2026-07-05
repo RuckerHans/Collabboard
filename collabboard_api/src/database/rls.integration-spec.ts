@@ -15,7 +15,6 @@ const EDITOR_ID = '22222222-2222-2222-2222-222222222222';
 const VIEWER_ID = '33333333-3333-3333-3333-333333333333';
 const SHARED_BOARD_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const PRIVATE_BOARD_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
-const SHARED_BOARD_NOTE_ID = '10000000-0000-0000-0000-000000000001';
 
 async function asUser<T>(
   userId: string,
@@ -105,30 +104,6 @@ describe('RLS integration', () => {
           `INSERT INTO notes (board_id, created_by, title)
            VALUES ($1, $2, 'spoofed')`,
           [SHARED_BOARD_ID, OWNER_ID],
-        ),
-      ).rejects.toThrow(/row-level security/i);
-    });
-  });
-
-  it('prevents presence on a board the current user cannot access', async () => {
-    await asUser(VIEWER_ID, async (client) => {
-      await expect(
-        client.query(
-          `INSERT INTO active_board_users
-             (board_id, user_id, socket_id, last_heartbeat)
-           VALUES ($1, $2, 'rls-test', now())`,
-          [PRIVATE_BOARD_ID, VIEWER_ID],
-        ),
-      ).rejects.toThrow(/row-level security/i);
-    });
-
-    await asUser(EDITOR_ID, async (client) => {
-      await expect(
-        client.query(
-          `INSERT INTO active_board_users
-             (board_id, user_id, socket_id, last_heartbeat, current_note_id)
-           VALUES ($1, $2, 'wrong-note-board', now(), $3)`,
-          [PRIVATE_BOARD_ID, EDITOR_ID, SHARED_BOARD_NOTE_ID],
         ),
       ).rejects.toThrow(/row-level security/i);
     });

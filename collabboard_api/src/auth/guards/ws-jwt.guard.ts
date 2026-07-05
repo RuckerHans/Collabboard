@@ -11,6 +11,7 @@ import { JwtPayload } from '../auth.service';
 
 type AuthenticatedSocketData = {
   boardIds?: string[];
+  lockedNotesByBoard?: Record<string, string[]>;
 };
 
 export type AuthenticatedSocket = Omit<Socket, 'data' | 'handshake'> & {

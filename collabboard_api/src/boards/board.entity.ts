@@ -8,7 +8,6 @@ import {
 } from 'typeorm';
 import { NoteHistory } from '../notes/note-history.entity';
 import { Note } from '../notes/note.entity';
-import { ActiveBoardUser } from '../presence/active-board-user.entity';
 import { User } from '../users/user.entity';
 import { BoardMember } from './board-member.entity';
 
@@ -41,7 +40,4 @@ export class Board {
 
   @OneToMany(() => NoteHistory, (history) => history.board)
   noteHistory!: NoteHistory[];
-
-  @OneToMany(() => ActiveBoardUser, (active) => active.board)
-  activeUsers!: ActiveBoardUser[];
 }

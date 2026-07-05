@@ -7,7 +7,6 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Board } from '../boards/board.entity';
-import { ActiveBoardUser } from '../presence/active-board-user.entity';
 import { User } from '../users/user.entity';
 import { NoteHistory } from './note-history.entity';
 
@@ -65,7 +64,4 @@ export class Note {
 
   @OneToMany(() => NoteHistory, (history) => history.note)
   history!: NoteHistory[];
-
-  @OneToMany(() => ActiveBoardUser, (active) => active.currentNote)
-  activeUsers!: ActiveBoardUser[];
 }

@@ -5,10 +5,10 @@ import { BoardMember } from '../boards/board-member.entity';
 import { Board } from '../boards/board.entity';
 import { NoteHistory } from '../notes/note-history.entity';
 import { Note } from '../notes/note.entity';
-import { ActiveBoardUser } from '../presence/active-board-user.entity';
 import { User } from '../users/user.entity';
 import { DatabaseService } from './database.service';
 import { PgNotifyService } from './pg-notify.service';
+import { RedisService } from './redis.service';
 
 @Global()
 @Module({
@@ -28,14 +28,7 @@ import { PgNotifyService } from './pg-notify.service';
           config.get<string>('DB_SSL') === 'true'
             ? { rejectUnauthorized: false }
             : false,
-        entities: [
-          User,
-          Board,
-          BoardMember,
-          Note,
-          NoteHistory,
-          ActiveBoardUser,
-        ],
+        entities: [User, Board, BoardMember, Note, NoteHistory],
         synchronize: false,
         logging:
           config.get<string>('NODE_ENV') === 'development'
@@ -44,7 +37,7 @@ import { PgNotifyService } from './pg-notify.service';
       }),
     }),
   ],
-  providers: [DatabaseService, PgNotifyService],
-  exports: [TypeOrmModule, DatabaseService, PgNotifyService],
+  providers: [DatabaseService, PgNotifyService, RedisService],
+  exports: [TypeOrmModule, DatabaseService, PgNotifyService, RedisService],
 })
 export class DatabaseModule {}

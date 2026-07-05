@@ -15,6 +15,7 @@ import {
   UpdateNotePositionDto,
 } from './dto/note.dto';
 import { NoteHistory } from './note-history.entity';
+import { NoteLockService } from './note-lock.service';
 import { Note } from './note.entity';
 
 type ConflictBody = {
@@ -24,11 +25,17 @@ type ConflictBody = {
   attempted_patch: Partial<Note>;
 };
 
+type LockedBody = {
+  error: 'locked';
+  heldBy: string;
+};
+
 @Injectable()
 export class NotesService {
   constructor(
     private readonly db: DatabaseService,
     private readonly boards: BoardsService,
+    private readonly noteLocks: NoteLockService,
   ) {}
 
   async listActive(boardId: string, userId: string) {
@@ -135,6 +142,13 @@ export class NotesService {
   ) {
     return this.db.runInRlsTransaction(userId, async () => {
       await this.boards.assertRole(boardId, userId, ['owner', 'editor']);
+      const heldBy = await this.noteLocks.holder(id);
+      if (heldBy && heldBy !== userId) {
+        throw new ConflictException({
+          error: 'locked',
+          heldBy,
+        } satisfies LockedBody);
+      }
       return this.optimisticUpdate(
         boardId,
         id,
