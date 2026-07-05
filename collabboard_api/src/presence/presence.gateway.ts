@@ -300,7 +300,6 @@ export class PresenceGateway
         event.payload.operation ?? event.payload.event ?? '',
       ).toLowerCase(),
     };
-    if (table === 'notes' && change.operation === 'update') return;
     if (table === 'board_members' && change.operation === 'delete') {
       const userId = this.valueAsString(
         event.payload.userId ?? event.payload.user_id,
