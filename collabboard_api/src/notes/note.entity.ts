@@ -14,13 +14,13 @@ import { NoteHistory } from './note-history.entity';
 @Entity('notes')
 export class Note {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ name: 'board_id' })
-  boardId: string;
+  boardId!: string;
 
   @Column({ name: 'created_by' })
-  createdBy: string;
+  createdBy!: string;
 
   @Column({ nullable: true })
   title?: string;
@@ -32,40 +32,40 @@ export class Note {
   color?: string;
 
   @Column({ name: 'position_x', type: 'float', default: 0 })
-  positionX: number;
+  positionX!: number;
 
   @Column({ name: 'position_y', type: 'float', default: 0 })
-  positionY: number;
+  positionY!: number;
 
   @Column({ type: 'float', default: 280 })
-  width: number;
+  width!: number;
 
   @Column({ type: 'float', default: 180 })
-  height: number;
+  height!: number;
 
   @Column({ name: 'z_index', type: 'int', default: 0 })
-  zIndex: number;
+  zIndex!: number;
 
   @Column({ type: 'int', default: 1 })
-  version: number;
+  version!: number;
 
   @Column({ name: 'is_pinned', default: false })
-  isPinned: boolean;
+  isPinned!: boolean;
 
   @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt?: Date | null;
 
   @ManyToOne(() => Board, (board) => board.notes, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'board_id' })
-  board: Board;
+  board!: Board;
 
   @ManyToOne(() => User, (user) => user.notes)
   @JoinColumn({ name: 'created_by' })
-  creator: User;
+  creator!: User;
 
   @OneToMany(() => NoteHistory, (history) => history.note)
-  history: NoteHistory[];
+  history!: NoteHistory[];
 
   @OneToMany(() => ActiveBoardUser, (active) => active.currentNote)
-  activeUsers: ActiveBoardUser[];
+  activeUsers!: ActiveBoardUser[];
 }

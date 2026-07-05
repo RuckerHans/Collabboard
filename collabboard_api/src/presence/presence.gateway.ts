@@ -8,6 +8,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { OnEvent } from '@nestjs/event-emitter';
+import { HttpException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Server } from 'socket.io';
 import { JwtPayload } from '../auth/auth.service';
@@ -21,7 +22,11 @@ type BoardBody = { boardId: string };
 type HeartbeatBody = BoardBody & { cursorX?: number; cursorY?: number };
 type CursorBody = BoardBody & { cursorX: number; cursorY: number };
 type TypingBody = BoardBody & { noteId: string };
-type NoteUpdateBody = BoardBody & { noteId: string; currentVersion: number; [key: string]: unknown };
+type NoteUpdateBody = BoardBody & {
+  noteId: string;
+  currentVersion: number;
+  [key: string]: unknown;
+};
 
 @WebSocketGateway({
   cors: {
@@ -29,9 +34,11 @@ type NoteUpdateBody = BoardBody & { noteId: string; currentVersion: number; [key
     credentials: true,
   },
 })
-export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class PresenceGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
-  server: Server;
+  server!: Server;
 
   constructor(
     private readonly jwt: JwtService,
@@ -52,17 +59,30 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (!client.user) return;
     const userId = client.user.id;
     const boardIds = Array.isArray(client.data.boardIds)
-      ? client.data.boardIds as string[]
+      ? client.data.boardIds
       : [];
-    await Promise.all(boardIds.map((boardId) => this.presence.leaveBoard(boardId, userId, client.id)));
+    await Promise.all(
+      boardIds.map((boardId) =>
+        this.presence.leaveBoard(boardId, userId, client.id),
+      ),
+    );
   }
 
   @SubscribeMessage('join_board')
-  async joinBoard(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() body: BoardBody) {
+  async joinBoard(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() body: BoardBody,
+  ) {
     const user = await this.ensureSocketUser(client);
-    const state = await this.presence.joinBoard(body.boardId, user.id, client.id);
+    const state = await this.presence.joinBoard(
+      body.boardId,
+      user.id,
+      client.id,
+    );
     await client.join(this.room(body.boardId));
-    client.data.boardIds = [...new Set([...(client.data.boardIds ?? []), body.boardId])];
+    client.data.boardIds = [
+      ...new Set([...(client.data.boardIds ?? []), body.boardId]),
+    ];
     client.emit('board_state', state);
     client.to(this.room(body.boardId)).emit('user_joined', {
       userId: user.id,
@@ -72,25 +92,43 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('leave_board')
-  async leaveBoard(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() body: BoardBody) {
+  async leaveBoard(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() body: BoardBody,
+  ) {
     const user = await this.ensureSocketUser(client);
     await this.presence.leaveBoard(body.boardId, user.id, client.id);
     await client.leave(this.room(body.boardId));
-    client.data.boardIds = (client.data.boardIds ?? []).filter((boardId: string) => boardId !== body.boardId);
+    client.data.boardIds = (client.data.boardIds ?? []).filter(
+      (boardId: string) => boardId !== body.boardId,
+    );
     client.to(this.room(body.boardId)).emit('user_left', { userId: user.id });
   }
 
   @SubscribeMessage('heartbeat')
-  async heartbeat(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() body: HeartbeatBody) {
+  async heartbeat(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() body: HeartbeatBody,
+  ) {
     const user = await this.ensureSocketUser(client);
-    await this.presence.heartbeat(body.boardId, user.id, client.id, body.cursorX, body.cursorY);
+    await this.presence.heartbeat(
+      body.boardId,
+      user.id,
+      client.id,
+      body.cursorX,
+      body.cursorY,
+    );
   }
 
   @SubscribeMessage('cursor_move')
-  async cursorMove(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() body: CursorBody) {
+  async cursorMove(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() body: CursorBody,
+  ) {
     const user = await this.ensureSocketUser(client);
     if (!client.rooms.has(this.room(body.boardId))) return;
-    if (!Number.isFinite(body.cursorX) || !Number.isFinite(body.cursorY)) return;
+    if (!Number.isFinite(body.cursorX) || !Number.isFinite(body.cursorY))
+      return;
     client.to(this.room(body.boardId)).emit('cursor_moved', {
       userId: user.id,
       username: user.username,
@@ -101,9 +139,18 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('typing_start')
-  async typingStart(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() body: TypingBody) {
+  async typingStart(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() body: TypingBody,
+  ) {
     const user = await this.ensureSocketUser(client);
-    await this.presence.setTyping(body.boardId, user.id, client.id, body.noteId, true);
+    await this.presence.setTyping(
+      body.boardId,
+      user.id,
+      client.id,
+      body.noteId,
+      true,
+    );
     client.to(this.room(body.boardId)).emit('typing_updated', {
       userId: user.id,
       username: user.username,
@@ -114,9 +161,18 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('typing_stop')
-  async typingStop(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() body: TypingBody) {
+  async typingStop(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() body: TypingBody,
+  ) {
     const user = await this.ensureSocketUser(client);
-    await this.presence.setTyping(body.boardId, user.id, client.id, body.noteId, false);
+    await this.presence.setTyping(
+      body.boardId,
+      user.id,
+      client.id,
+      body.noteId,
+      false,
+    );
     client.to(this.room(body.boardId)).emit('typing_updated', {
       userId: user.id,
       username: user.username,
@@ -127,15 +183,25 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('note_update')
-  async noteUpdate(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() body: NoteUpdateBody) {
+  async noteUpdate(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() body: NoteUpdateBody,
+  ) {
     const user = await this.ensureSocketUser(client);
     const { boardId, noteId, currentVersion, ...fields } = body;
     try {
-      const saved = await this.notes.updateFromSocket(boardId, noteId, currentVersion, fields, user.id);
+      const saved = await this.notes.updateFromSocket(
+        boardId,
+        noteId,
+        currentVersion,
+        fields,
+        user.id,
+      );
       this.server.to(this.room(boardId)).emit('note_updated', saved);
     } catch (error) {
-      const response = (error as { getResponse?: () => any })?.getResponse?.();
-      if (response?.error === 'conflict') {
+      const response =
+        error instanceof HttpException ? error.getResponse() : undefined;
+      if (this.isRecord(response) && response.error === 'conflict') {
         client.emit('note_conflict', {
           noteId,
           currentVersion: response.current_version,
@@ -153,31 +219,43 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   @OnEvent('pg.board_events')
   handleBoardNotify(event: BoardNotification) {
-    const boardId = String(event.payload.board_id ?? event.payload.boardId ?? '');
-    if (!boardId) return;
-    const table = String(event.payload.table ?? '');
-    const change = {
-      id: String(event.payload.id ?? ''),
-      operation: String(event.payload.operation ?? event.payload.event ?? '').toLowerCase(),
-    };
-    this.server.to(this.room(boardId)).emit(
-      table === 'notes' ? 'notes_invalidated' : 'board_invalidated',
-      change,
+    const boardId = this.valueAsString(
+      event.payload.board_id ?? event.payload.boardId ?? '',
     );
+    if (!boardId) return;
+    const table = this.valueAsString(event.payload.table);
+    const change = {
+      id: this.valueAsString(event.payload.id),
+      operation: this.valueAsString(
+        event.payload.operation ?? event.payload.event ?? '',
+      ).toLowerCase(),
+    };
+    this.server
+      .to(this.room(boardId))
+      .emit(
+        table === 'notes' ? 'notes_invalidated' : 'board_invalidated',
+        change,
+      );
   }
 
   @OnEvent('pg.presence_events')
   handlePresenceNotify(event: BoardNotification) {
-    const boardId = String(event.payload.board_id ?? event.payload.boardId ?? '');
+    const boardId = this.valueAsString(
+      event.payload.board_id ?? event.payload.boardId ?? '',
+    );
     if (!boardId) return;
-    const operation = String(event.payload.operation ?? '').toLowerCase();
+    const operation = this.valueAsString(event.payload.operation).toLowerCase();
     if (operation === 'insert') {
       this.server.to(this.room(boardId)).emit('user_joined', {
-        userId: String(event.payload.userId ?? event.payload.user_id ?? ''),
+        userId: this.valueAsString(
+          event.payload.userId ?? event.payload.user_id,
+        ),
       });
     } else if (operation === 'delete') {
       this.server.to(this.room(boardId)).emit('user_left', {
-        userId: String(event.payload.userId ?? event.payload.user_id ?? ''),
+        userId: this.valueAsString(
+          event.payload.userId ?? event.payload.user_id,
+        ),
       });
     }
   }
@@ -186,7 +264,19 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
     return `board:${boardId}`;
   }
 
-  private async ensureSocketUser(client: AuthenticatedSocket): Promise<NonNullable<AuthenticatedSocket['user']>> {
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private valueAsString(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+    return '';
+  }
+
+  private async ensureSocketUser(
+    client: AuthenticatedSocket,
+  ): Promise<NonNullable<AuthenticatedSocket['user']>> {
     if (client.user) return client.user;
     const token = this.extractToken(client);
     const payload = await this.jwt.verifyAsync<JwtPayload>(token);
@@ -201,7 +291,8 @@ export class PresenceGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   private extractToken(client: AuthenticatedSocket) {
-    const token = client.handshake.auth?.token ?? client.handshake.headers.authorization;
+    const token =
+      client.handshake.auth?.token ?? client.handshake.headers.authorization;
     if (typeof token !== 'string' || token.length === 0) {
       throw new Error('Missing token');
     }

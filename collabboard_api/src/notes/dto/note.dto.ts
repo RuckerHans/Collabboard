@@ -55,7 +55,7 @@ export class CreateNoteDto {
 export class UpdateNoteDto {
   @IsInt()
   @Min(1)
-  current_version: number;
+  current_version!: number;
 
   @IsOptional()
   @IsString()
@@ -86,38 +86,38 @@ export class UpdateNoteDto {
 export class UpdateNotePositionDto {
   @IsInt()
   @Min(1)
-  current_version: number;
+  current_version!: number;
 
   @IsNumber()
   @Min(0)
-  positionX: number;
+  positionX!: number;
 
   @IsNumber()
   @Min(0)
-  positionY: number;
+  positionY!: number;
 
   @IsInt()
   @Min(0)
-  zIndex: number;
+  zIndex!: number;
 }
 
 export class NoteParamDto {
   @IsUUID()
-  boardId: string;
+  boardId!: string;
 
   @IsUUID()
-  id: string;
+  id!: string;
 }
 
 export class NoteResponseDto {
   @Expose()
-  id: string;
+  id!: string;
 
   @Expose()
-  boardId: string;
+  boardId!: string;
 
   @Expose()
-  createdBy: string;
+  createdBy!: string;
 
   @Expose()
   title?: string;
@@ -129,25 +129,25 @@ export class NoteResponseDto {
   color?: string;
 
   @Expose()
-  positionX: number;
+  positionX!: number;
 
   @Expose()
-  positionY: number;
+  positionY!: number;
 
   @Expose()
-  width: number;
+  width!: number;
 
   @Expose()
-  height: number;
+  height!: number;
 
   @Expose()
-  zIndex: number;
+  zIndex!: number;
 
   @Expose()
-  version: number;
+  version!: number;
 
   @Expose()
-  isPinned: boolean;
+  isPinned!: boolean;
 
   @Expose()
   deletedAt?: Date | null;
@@ -155,19 +155,19 @@ export class NoteResponseDto {
 
 export class NoteHistoryResponseDto {
   @Expose()
-  id: string;
+  id!: string;
 
   @Expose()
-  noteId: string;
+  noteId!: string;
 
   @Expose()
-  boardId: string;
+  boardId!: string;
 
   @Expose()
-  changedBy: string;
+  changedBy!: string;
 
   @Expose()
-  operation: string;
+  operation!: string;
 
   @Expose()
   versionBefore?: number;
@@ -184,4 +184,3 @@ export class NoteHistoryResponseDto {
   @Expose()
   changedFields?: string[];
 }
-

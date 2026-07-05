@@ -67,15 +67,7 @@ jobs:
 
       - name: Lint
         working-directory: collabboard_api
-        # Non-blocking for now: this codebase has ~80 pre-existing
-        # @typescript-eslint/no-unsafe-* violations in files predating
-        # this CI pipeline (auth.module.ts, presence.gateway.ts,
-        # pg-notify.service.ts, etc.). Surfacing them here without
-        # failing the build avoids blocking every PR on unrelated debt.
-        # Tracked as a follow-up to fix incrementally; remove
-        # continue-on-error once those are cleaned up.
         run: npm run lint
-        continue-on-error: true
 
       - name: Run tests
         working-directory: collabboard_api
@@ -121,7 +113,10 @@ jobs:
     name: Deploy collabboard_api to ECS
     runs-on: ubuntu-latest
     needs: backend-test
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    # AWS deployment temporarily paused while new features are in development.
+    # To re-enable, restore:
+    # if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    if: ${{ false }}
 
     permissions:
       id-token: write
@@ -276,7 +271,10 @@ jobs:
     name: Deploy collabboard_front to ECS
     runs-on: ubuntu-latest
     needs: frontend-test
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    # AWS deployment temporarily paused while new features are in development.
+    # To re-enable, restore:
+    # if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    if: ${{ false }}
 
     permissions:
       id-token: write

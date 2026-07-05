@@ -23,7 +23,7 @@ export class PgNotifyService implements OnModuleInit, OnModuleDestroy {
     private readonly events: EventEmitter2,
   ) {}
 
-  async onModuleInit() {
+  async onModuleInit(): Promise<void> {
     this.client = new Client({
       connectionString: this.config.get<string>('DATABASE_URL'),
       host: this.config.get<string>('DB_HOST'),
@@ -49,11 +49,11 @@ export class PgNotifyService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('Listening on board_events and presence_events');
   }
 
-  async onModuleDestroy() {
+  async onModuleDestroy(): Promise<void> {
     await this.client?.end();
   }
 
-  private handleNotification(notification: Notification) {
+  private handleNotification(notification: Notification): void {
     if (
       notification.channel !== 'board_events' &&
       notification.channel !== 'presence_events'
@@ -63,7 +63,13 @@ export class PgNotifyService implements OnModuleInit, OnModuleDestroy {
 
     let payload: Record<string, unknown> = {};
     try {
-      payload = notification.payload ? JSON.parse(notification.payload) : {};
+      const parsed: unknown = notification.payload
+        ? JSON.parse(notification.payload)
+        : {};
+      payload =
+        typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : { raw: parsed };
     } catch {
       payload = { raw: notification.payload };
     }

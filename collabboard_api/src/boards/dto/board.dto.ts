@@ -12,7 +12,7 @@ import type { BoardRole } from '../board-member.entity';
 export class CreateBoardDto {
   @IsString()
   @Length(1, 120)
-  name: string;
+  name!: string;
 
   @IsOptional()
   @IsString()
@@ -34,31 +34,31 @@ export class UpdateBoardDto {
 
 export class InviteMemberDto {
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsIn(['editor', 'viewer'])
-  role: Extract<BoardRole, 'editor' | 'viewer'>;
+  role!: Extract<BoardRole, 'editor' | 'viewer'>;
 }
 
 export class UpdateMemberRoleDto {
   @IsIn(['editor', 'viewer'])
-  role: Extract<BoardRole, 'editor' | 'viewer'>;
+  role!: Extract<BoardRole, 'editor' | 'viewer'>;
 }
 
 export class BoardParamDto {
   @IsUUID()
-  id: string;
+  id!: string;
 }
 
 export class BoardMemberResponseDto {
   @Expose()
-  id: string;
+  id!: string;
 
   @Expose()
-  userId: string;
+  userId!: string;
 
   @Expose()
-  role: BoardRole;
+  role!: BoardRole;
 
   @Expose()
   username?: string;
@@ -72,19 +72,19 @@ export class BoardMemberResponseDto {
 
 export class BoardResponseDto {
   @Expose()
-  id: string;
+  id!: string;
 
   @Expose()
-  name: string;
+  name!: string;
 
   @Expose()
   description?: string;
 
   @Expose()
-  ownerId: string;
+  ownerId!: string;
 
   @Expose()
-  isArchived: boolean;
+  isArchived!: boolean;
 
   @Expose()
   memberCount?: number;

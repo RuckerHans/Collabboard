@@ -17,7 +17,7 @@ export class UsersService {
   constructor(private readonly db: DatabaseService) {}
 
   async findById(id: string): Promise<User | null> {
-    const rows = await this.db.manager.query(
+    const rows = await this.db.manager.query<AuthUserRow[]>(
       'SELECT * FROM find_user_by_id_for_auth($1)',
       [id],
     );
@@ -33,7 +33,7 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    const rows = await this.db.manager.query(
+    const rows = await this.db.manager.query<AuthUserRow[]>(
       'SELECT * FROM find_user_for_auth($1)',
       [email.toLowerCase()],
     );

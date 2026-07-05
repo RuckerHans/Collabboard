@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { QueryFailedError } from 'typeorm';
 
 type PgError = Error & {
@@ -27,9 +28,9 @@ type RequestDetails = {
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
 
-  catch(exception: unknown, host: ArgumentsHost) {
+  catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
-    const response = http.getResponse();
+    const response = http.getResponse<Response>();
     const request = http.getRequest<RequestDetails>();
     const context = {
       method: request.method,
@@ -45,7 +46,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           ? (body as { error?: string; message?: string | string[] })
           : undefined;
       const isMissingRoute =
-        status === HttpStatus.NOT_FOUND &&
+        status === Number(HttpStatus.NOT_FOUND) &&
         typeof defaultBody?.message === 'string' &&
         defaultBody.message.startsWith('Cannot ');
       response.status(status).json({
@@ -62,7 +63,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof QueryFailedError) {
-      const error = exception.driverError as PgError;
+      const error = exception.driverError as unknown as PgError;
       this.logger.error(
         `PostgreSQL error ${error.code ?? 'unknown'}: ${error.message}`,
         error.detail,
@@ -72,12 +73,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return;
     }
 
-    const message = exception instanceof Error ? exception.message : 'Internal server error';
-    this.logger.error(message, exception instanceof Error ? exception.stack : undefined);
+    const message =
+      exception instanceof Error ? exception.message : 'Internal server error';
+    this.logger.error(
+      message,
+      exception instanceof Error ? exception.stack : undefined,
+    );
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       error: 'internal_server_error',
-      message: process.env.NODE_ENV === 'development' ? message : 'Internal server error',
+      message:
+        process.env.NODE_ENV === 'development'
+          ? message
+          : 'Internal server error',
       ...context,
     });
   }
@@ -135,7 +143,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     return {
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       error: error.code,
-      message: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      message:
+        process.env.NODE_ENV === 'development'
+          ? error.message
+          : 'Internal server error',
       detail: process.env.NODE_ENV === 'development' ? error.detail : undefined,
     };
   }
@@ -159,7 +170,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       [HttpStatus.NOT_FOUND]: 'not_found',
       [HttpStatus.CONFLICT]: 'conflict',
     };
-    return codes[status] ?? fallback?.toLowerCase().replace(/\s+/g, '_') ?? 'http_error';
+    return (
+      codes[status] ??
+      fallback?.toLowerCase().replace(/\s+/g, '_') ??
+      'http_error'
+    );
   }
 
   private actionForMethod(method?: string) {

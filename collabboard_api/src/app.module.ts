@@ -24,9 +24,7 @@ import { HealthController } from './health.controller';
     NotesModule,
     PresenceModule,
   ],
-  controllers: [
-    HealthController,
-  ],
+  controllers: [HealthController],
   providers: [
     { provide: APP_INTERCEPTOR, useClass: RlsTransactionInterceptor },
   ],

@@ -9,6 +9,23 @@ import { NoteResponseDto } from '../notes/dto/note.dto';
 import { Note } from '../notes/note.entity';
 import { ActiveBoardUser } from './active-board-user.entity';
 
+type BoardMemberState = {
+  userId: string;
+  role: string;
+  username: string;
+  email: string;
+  avatarColor: string;
+};
+
+type ActiveUserState = {
+  userId: string;
+  username: string;
+  avatarColor: string;
+  cursorX: number | null;
+  cursorY: number | null;
+  currentNoteId: string | null;
+  isTyping: boolean;
+};
 
 @Injectable()
 export class PresenceService {
@@ -27,18 +44,37 @@ export class PresenceService {
 
   async leaveBoard(boardId: string, userId: string, socketId: string) {
     return this.db.runInRlsTransaction(userId, async () => {
-      await this.db.manager.delete(ActiveBoardUser, { boardId, userId, socketId });
+      await this.db.manager.delete(ActiveBoardUser, {
+        boardId,
+        userId,
+        socketId,
+      });
     });
   }
 
-  async heartbeat(boardId: string, userId: string, socketId: string, cursorX?: number, cursorY?: number) {
+  async heartbeat(
+    boardId: string,
+    userId: string,
+    socketId: string,
+    cursorX?: number,
+    cursorY?: number,
+  ) {
     return this.db.runInRlsTransaction(userId, async () => {
       await this.boards.assertMember(boardId, userId);
-      await this.upsertPresence(boardId, userId, socketId, { cursorX, cursorY });
+      await this.upsertPresence(boardId, userId, socketId, {
+        cursorX,
+        cursorY,
+      });
     });
   }
 
-  async setTyping(boardId: string, userId: string, socketId: string, noteId: string, isTyping: boolean) {
+  async setTyping(
+    boardId: string,
+    userId: string,
+    socketId: string,
+    noteId: string,
+    isTyping: boolean,
+  ) {
     return this.db.runInRlsTransaction(userId, async () => {
       await this.boards.assertMember(boardId, userId);
       await this.upsertPresence(boardId, userId, socketId, {
@@ -52,7 +88,10 @@ export class PresenceService {
   async boardState(boardId: string, userId: string) {
     await this.boards.assertMember(boardId, userId);
     const [notes, members, activeUsers] = await Promise.all([
-      this.db.manager.find(Note, { where: { boardId, deletedAt: IsNull() }, order: { zIndex: 'ASC' } }),
+      this.db.manager.find(Note, {
+        where: { boardId, deletedAt: IsNull() },
+        order: { zIndex: 'ASC' },
+      }),
       this.db.manager
         .createQueryBuilder(BoardMember, 'member')
         .innerJoin('member.user', 'user')
@@ -64,18 +103,20 @@ export class PresenceService {
           'user.email AS email',
           'user.avatar_color AS "avatarColor"',
         ])
-        .getRawMany(),
+        .getRawMany<BoardMemberState>(),
       this.activeUsers(boardId),
     ]);
 
     return {
-      notes: plainToInstance(NoteResponseDto, notes, { excludeExtraneousValues: true }),
+      notes: plainToInstance(NoteResponseDto, notes, {
+        excludeExtraneousValues: true,
+      }),
       members,
       activeUsers,
     };
   }
 
-  async activeUsers(boardId: string) {
+  async activeUsers(boardId: string): Promise<ActiveUserState[]> {
     return this.db.manager
       .createQueryBuilder(ActiveBoardUser, 'presence')
       .innerJoin('presence.user', 'user')
@@ -89,22 +130,27 @@ export class PresenceService {
         'presence.current_note_id AS "currentNoteId"',
         'presence.is_typing AS "isTyping"',
       ])
-      .getRawMany();
+      .getRawMany<ActiveUserState>();
   }
 
   @Cron(CronExpression.EVERY_30_SECONDS)
-  async cleanupStalePresence() {
-    await this.db.source.query('SELECT fn_cleanup_stale_presence()');
+  async cleanupStalePresence(): Promise<void> {
+    await this.db.source.query<unknown[]>('SELECT fn_cleanup_stale_presence()');
   }
 
-  private async upsertPresence(boardId: string, userId: string, socketId: string, patch: Partial<ActiveBoardUser>) {
-    const hasCursorX = Object.prototype.hasOwnProperty.call(patch, 'cursorX');
-    const hasCursorY = Object.prototype.hasOwnProperty.call(patch, 'cursorY');
-    const hasCurrentNoteId = Object.prototype.hasOwnProperty.call(patch, 'currentNoteId');
-    const hasTyping = Object.prototype.hasOwnProperty.call(patch, 'isTyping');
-    const hasTypingExpiresAt = Object.prototype.hasOwnProperty.call(patch, 'typingExpiresAt');
+  private async upsertPresence(
+    boardId: string,
+    userId: string,
+    socketId: string,
+    patch: Partial<ActiveBoardUser>,
+  ) {
+    const hasCursorX = Object.hasOwn(patch, 'cursorX');
+    const hasCursorY = Object.hasOwn(patch, 'cursorY');
+    const hasCurrentNoteId = Object.hasOwn(patch, 'currentNoteId');
+    const hasTyping = Object.hasOwn(patch, 'isTyping');
+    const hasTypingExpiresAt = Object.hasOwn(patch, 'typingExpiresAt');
 
-    await this.db.manager.query(
+    await this.db.manager.query<unknown[]>(
       `
         INSERT INTO active_board_users (
           board_id,
@@ -147,4 +193,3 @@ export class PresenceService {
     );
   }
 }
-

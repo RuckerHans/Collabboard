@@ -209,7 +209,6 @@ export class NotesService {
       Object.entries(patch).filter(
         ([key, value]) => editableFields.has(key) && value !== undefined,
       ),
-    ) as Partial<Note>;
+    );
   }
 }
-

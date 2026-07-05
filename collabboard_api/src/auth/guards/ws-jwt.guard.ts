@@ -9,7 +9,15 @@ import { Socket } from 'socket.io';
 import { UsersService } from '../../users/users.service';
 import { JwtPayload } from '../auth.service';
 
-export type AuthenticatedSocket = Socket & {
+type AuthenticatedSocketData = {
+  boardIds?: string[];
+};
+
+export type AuthenticatedSocket = Omit<Socket, 'data' | 'handshake'> & {
+  data: AuthenticatedSocketData;
+  handshake: Omit<Socket['handshake'], 'auth'> & {
+    auth: { token?: unknown };
+  };
   user?: { id: string; email: string; username: string; avatarColor: string };
 };
 
@@ -37,8 +45,8 @@ export class WsJwtGuard implements CanActivate {
     return true;
   }
 
-  private extractToken(client: Socket): string | undefined {
-    const authToken = client.handshake.auth?.token;
+  private extractToken(client: AuthenticatedSocket): string | undefined {
+    const authToken = client.handshake.auth.token;
     if (typeof authToken === 'string') {
       return authToken.replace(/^Bearer\s+/i, '');
     }

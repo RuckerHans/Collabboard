@@ -15,33 +15,33 @@ import { BoardMember } from './board-member.entity';
 @Entity('boards')
 export class Board {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column()
-  name: string;
+  name!: string;
 
   @Column({ nullable: true })
   description?: string;
 
   @Column({ name: 'owner_id' })
-  ownerId: string;
+  ownerId!: string;
 
   @Column({ name: 'is_archived', default: false })
-  isArchived: boolean;
+  isArchived!: boolean;
 
   @ManyToOne(() => User, (user) => user.ownedBoards)
   @JoinColumn({ name: 'owner_id' })
-  owner: User;
+  owner!: User;
 
   @OneToMany(() => BoardMember, (member) => member.board)
-  members: BoardMember[];
+  members!: BoardMember[];
 
   @OneToMany(() => Note, (note) => note.board)
-  notes: Note[];
+  notes!: Note[];
 
   @OneToMany(() => NoteHistory, (history) => history.board)
-  noteHistory: NoteHistory[];
+  noteHistory!: NoteHistory[];
 
   @OneToMany(() => ActiveBoardUser, (active) => active.board)
-  activeUsers: ActiveBoardUser[];
+  activeUsers!: ActiveBoardUser[];
 }

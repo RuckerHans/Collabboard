@@ -1,4 +1,8 @@
-import { ExecutionContext, CallHandler, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  CallHandler,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { of } from 'rxjs';
 import { RlsTransactionInterceptor } from './rls-transaction.interceptor'; // <-- confirm this path
 import { DatabaseService } from './database.service';
@@ -51,7 +55,9 @@ describe('RlsTransactionInterceptor', () => {
     const context = makeContext({ user: undefined, method: 'POST' });
     const next = makeNext();
 
-    expect(() => interceptor.intercept(context, next)).toThrow(UnauthorizedException);
+    expect(() => interceptor.intercept(context, next)).toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('passes through if no user but route IS public', (done) => {
@@ -86,7 +92,10 @@ describe('RlsTransactionInterceptor', () => {
     const result = await interceptor.intercept(context, next).toPromise();
 
     expect(result).toBe('authenticated result');
-    expect(mockDb.runInRlsTransaction).toHaveBeenCalledWith('user-123', expect.any(Function));
+    expect(mockDb.runInRlsTransaction).toHaveBeenCalledWith(
+      'user-123',
+      expect.any(Function),
+    );
   });
 
   it('falls back to request.user.sub if request.user.id is missing', async () => {
@@ -96,6 +105,9 @@ describe('RlsTransactionInterceptor', () => {
 
     await interceptor.intercept(context, next).toPromise();
 
-    expect(mockDb.runInRlsTransaction).toHaveBeenCalledWith('sub-456', expect.any(Function));
+    expect(mockDb.runInRlsTransaction).toHaveBeenCalledWith(
+      'sub-456',
+      expect.any(Function),
+    );
   });
 });

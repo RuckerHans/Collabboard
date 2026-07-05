@@ -9,13 +9,13 @@ import { ActiveBoardUser } from '../presence/active-board-user.entity';
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ unique: true })
-  username: string;
+  username!: string;
 
   @Column({ unique: true })
-  email: string;
+  email!: string;
 
   @Exclude()
   @Column({ name: 'password_hash', nullable: true })
@@ -28,23 +28,23 @@ export class User {
   oauthId?: string;
 
   @Column({ name: 'avatar_color', default: '#4f46e5' })
-  avatarColor: string;
+  avatarColor!: string;
 
   @Column({ name: 'is_active', default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
   @OneToMany(() => Board, (board) => board.owner)
-  ownedBoards: Board[];
+  ownedBoards!: Board[];
 
   @OneToMany(() => BoardMember, (member) => member.user)
-  memberships: BoardMember[];
+  memberships!: BoardMember[];
 
   @OneToMany(() => Note, (note) => note.creator)
-  notes: Note[];
+  notes!: Note[];
 
   @OneToMany(() => NoteHistory, (history) => history.changedByUser)
-  noteHistory: NoteHistory[];
+  noteHistory!: NoteHistory[];
 
   @OneToMany(() => ActiveBoardUser, (active) => active.user)
-  activeBoards: ActiveBoardUser[];
+  activeBoards!: ActiveBoardUser[];
 }

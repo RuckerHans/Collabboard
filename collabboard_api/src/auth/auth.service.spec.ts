@@ -81,7 +81,10 @@ describe('AuthService', () => {
 
       const result = await service.login('jane@test.com', 'correct-password');
 
-      expect(bcrypt.compare).toHaveBeenCalledWith('correct-password', 'stored-hash');
+      expect(bcrypt.compare).toHaveBeenCalledWith(
+        'correct-password',
+        'stored-hash',
+      );
       expect(result.access_token).toBe('fake-jwt-token');
     });
 
@@ -97,13 +100,17 @@ describe('AuthService', () => {
     });
 
     it('throws UnauthorizedException if the password is wrong', async () => {
-      const fakeUser = { id: 'u1', email: 'jane@test.com', passwordHash: 'stored-hash' };
+      const fakeUser = {
+        id: 'u1',
+        email: 'jane@test.com',
+        passwordHash: 'stored-hash',
+      };
       mockUsers.findByEmail.mockResolvedValue(fakeUser);
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
-      await expect(service.login('jane@test.com', 'wrong-password')).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        service.login('jane@test.com', 'wrong-password'),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('throws UnauthorizedException if the user has no passwordHash (OAuth-only account)', async () => {

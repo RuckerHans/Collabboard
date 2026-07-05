@@ -11,14 +11,14 @@ import {
 export class RegisterDto {
   @IsString()
   @Length(3, 40)
-  username: string;
+  username!: string;
 
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsString()
   @MinLength(8)
-  password: string;
+  password!: string;
 
   @IsOptional()
   @IsString()
@@ -27,35 +27,35 @@ export class RegisterDto {
 
 export class LoginDto {
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsString()
   @IsNotEmpty()
-  password: string;
+  password!: string;
 }
 
 export class UserResponseDto {
   @Expose()
-  id: string;
+  id!: string;
 
   @Expose()
-  username: string;
+  username!: string;
 
   @Expose()
-  email: string;
+  email!: string;
 
   @Expose()
-  avatarColor: string;
+  avatarColor!: string;
 
   @Expose()
-  isActive: boolean;
+  isActive!: boolean;
 }
 
 export class AuthResponseDto {
   @Expose()
-  access_token: string;
+  access_token!: string;
 
   @Expose()
   @Type(() => UserResponseDto)
-  user: UserResponseDto;
+  user!: UserResponseDto;
 }

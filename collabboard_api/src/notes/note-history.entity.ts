@@ -12,19 +12,19 @@ import { Note } from './note.entity';
 @Entity('note_history')
 export class NoteHistory {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ name: 'note_id' })
-  noteId: string;
+  noteId!: string;
 
   @Column({ name: 'board_id' })
-  boardId: string;
+  boardId!: string;
 
   @Column({ name: 'changed_by' })
-  changedBy: string;
+  changedBy!: string;
 
   @Column()
-  operation: string;
+  operation!: string;
 
   @Column({ name: 'version_before', type: 'int', nullable: true })
   versionBefore?: number;
@@ -43,13 +43,13 @@ export class NoteHistory {
 
   @ManyToOne(() => Note, (note) => note.history, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'note_id' })
-  note: Note;
+  note!: Note;
 
   @ManyToOne(() => Board, (board) => board.noteHistory, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'board_id' })
-  board: Board;
+  board!: Board;
 
   @ManyToOne(() => User, (user) => user.noteHistory)
   @JoinColumn({ name: 'changed_by' })
-  changedByUser: User;
+  changedByUser!: User;
 }
