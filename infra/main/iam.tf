@@ -147,6 +147,7 @@ data "aws_iam_policy_document" "github_deploy" {
     actions = [
       "lambda:UpdateFunctionCode",
       "lambda:GetFunction",
+      "lambda:GetFunctionConfiguration",
     ]
     resources = [aws_lambda_function.note_history_worker.arn]
   }
