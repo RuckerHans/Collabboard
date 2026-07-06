@@ -30,6 +30,7 @@ locals {
     "ecr.dkr",
     "logs",
     "secretsmanager",
+    "sqs",
   ])
 }
 

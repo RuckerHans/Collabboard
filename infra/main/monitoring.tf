@@ -137,6 +137,25 @@ resource "aws_cloudwatch_metric_alarm" "zero_healthy_hosts" {
   ok_actions    = [aws_sns_topic.alerts.arn]
 }
 
+resource "aws_cloudwatch_metric_alarm" "note_history_dlq_messages" {
+  alarm_name          = "${var.project_name}-${var.environment}-note-history-dlq-messages"
+  alarm_description   = "The note-history dead-letter queue has messages requiring investigation."
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  statistic           = "Maximum"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 1
+  evaluation_periods  = 1
+  period              = 300
+
+  dimensions = {
+    QueueName = aws_sqs_queue.note_history_dlq.name
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+}
+
 resource "aws_cloudwatch_metric_alarm" "front_target_health" {
   alarm_name          = "${var.project_name}-${var.environment}-front-unhealthy-hosts"
   alarm_description   = "One or more frontend target-group hosts are unhealthy."
