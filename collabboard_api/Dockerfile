@@ -24,11 +24,15 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3050
 
+RUN apk add --no-cache postgresql-client
+
 COPY package*.json ./
 
 RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
+COPY migrations ./migrations
+COPY scripts ./scripts
 
 USER node
 

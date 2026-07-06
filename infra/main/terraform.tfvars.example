@@ -1,0 +1,7 @@
+environment       = "production"
+project_name      = "collabboard"
+aws_region        = "ap-southeast-2"
+db_instance_class = "db.t3.micro"
+db_engine_version = "16.14"
+redis_node_type   = "cache.t3.micro"
+redis_engine_version = "7.1"

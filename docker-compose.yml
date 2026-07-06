@@ -19,6 +19,7 @@ services:
       POSTGRES_DB: collabboard
       POSTGRES_USER: collabboard
       POSTGRES_PASSWORD: collabboard123
+      APP_PASSWORD: collabboard_app_pw123
     ports:
       - "5432:5432"
     volumes:
