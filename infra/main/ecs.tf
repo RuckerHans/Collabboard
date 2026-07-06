@@ -195,7 +195,7 @@ resource "aws_ecs_service" "api" {
   depends_on = [aws_lb_listener_rule.api]
 
   lifecycle {
-    ignore_changes = [desired_count]
+    ignore_changes = [desired_count, task_definition]
   }
 
   tags = {
@@ -230,7 +230,7 @@ resource "aws_ecs_service" "front" {
   depends_on = [aws_lb_listener.http]
 
   lifecycle {
-    ignore_changes = [desired_count]
+    ignore_changes = [desired_count, task_definition]
   }
 
   tags = {

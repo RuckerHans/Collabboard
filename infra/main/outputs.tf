@@ -132,3 +132,23 @@ output "sns_topic_arn" {
   description = "ARN of the Collabboard alerting SNS topic."
   value       = aws_sns_topic.alerts.arn
 }
+
+output "note_history_queue_arn" {
+  description = "ARN of the note-history worker's main SQS queue."
+  value       = aws_sqs_queue.note_history.arn
+}
+
+output "note_history_queue_url" {
+  description = "URL of the note-history worker's main SQS queue."
+  value       = aws_sqs_queue.note_history.url
+}
+
+output "note_history_dlq_arn" {
+  description = "ARN of the note-history worker's dead-letter queue."
+  value       = aws_sqs_queue.note_history_dlq.arn
+}
+
+output "note_history_worker_role_arn" {
+  description = "ARN of the note-history worker Lambda's execution role."
+  value       = aws_iam_role.note_history_worker.arn
+}

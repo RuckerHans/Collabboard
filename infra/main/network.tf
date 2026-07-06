@@ -237,6 +237,24 @@ resource "aws_security_group" "front" {
   }
 }
 
+resource "aws_security_group" "lambda_worker" {
+  name        = "${var.project_name}-${var.environment}-lambda-worker"
+  description = "Allow the note-history worker Lambda to reach RDS and VPC endpoints"
+  vpc_id      = aws_vpc.main.id
+
+  egress {
+    description = "VPC-only egress to RDS and Secrets Manager VPC endpoint"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [aws_vpc.main.cidr_block]
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-lambda-worker-sg"
+  }
+}
+
 resource "aws_security_group" "rds" {
   name        = "${var.project_name}-${var.environment}-rds"
   description = "Allow PostgreSQL traffic from the API"
@@ -248,6 +266,14 @@ resource "aws_security_group" "rds" {
     to_port         = 5432
     protocol        = "tcp"
     security_groups = [aws_security_group.api.id]
+  }
+
+  ingress {
+    description     = "PostgreSQL from note-history worker Lambda"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.lambda_worker.id]
   }
 
   egress {
