@@ -133,6 +133,25 @@ data "aws_iam_policy_document" "github_deploy" {
   }
 
   statement {
+    sid     = "ReadLambdaDeploymentLogs"
+    effect  = "Allow"
+    actions = ["logs:FilterLogEvents"]
+    resources = [
+      "arn:${data.aws_partition.current.partition}:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/collabboard-*:*",
+    ]
+  }
+
+  statement {
+    sid    = "DeployNoteHistoryLambda"
+    effect = "Allow"
+    actions = [
+      "lambda:UpdateFunctionCode",
+      "lambda:GetFunction",
+    ]
+    resources = [aws_lambda_function.note_history_worker.arn]
+  }
+
+  statement {
     sid     = "PassECSTaskRoles"
     effect  = "Allow"
     actions = ["iam:PassRole"]

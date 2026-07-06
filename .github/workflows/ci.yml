@@ -472,3 +472,69 @@ jobs:
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
+
+  deploy-lambda:
+    name: Deploy note-history-worker Lambda
+    runs-on: ubuntu-latest
+    needs: backend-test
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      AWS_REGION: ap-southeast-2
+      FUNCTION_NAME: collabboard-production-note-history-worker
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: collabboard_api/lambda/note-history-worker/package-lock.json
+
+      - name: Install dependencies
+        working-directory: collabboard_api/lambda/note-history-worker
+        run: npm ci --omit=dev
+
+      - name: Build deployment package
+        working-directory: collabboard_api/lambda/note-history-worker
+        run: bash build.sh
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::433048100589:role/collabboard-github-deploy-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy updated function code
+        working-directory: collabboard_api/lambda/note-history-worker
+        run: |
+          aws lambda update-function-code \
+            --function-name "$FUNCTION_NAME" \
+            --zip-file fileb://function.zip
+
+          aws lambda wait function-updated \
+            --function-name "$FUNCTION_NAME"
+
+      - name: Diagnose failed Lambda deployment
+        if: failure()
+        run: |
+          set +e
+
+          echo "===== Lambda last update status ====="
+          aws lambda get-function \
+            --function-name "$FUNCTION_NAME" \
+            --query 'Configuration.{LastUpdateStatus:LastUpdateStatus,LastUpdateStatusReason:LastUpdateStatusReason,State:State,StateReason:StateReason}' \
+            --output json
+
+          echo "===== Recent note-history-worker CloudWatch logs ====="
+          aws logs tail "/aws/lambda/$FUNCTION_NAME" --since 30m --format short \
+            || echo "Unable to read Lambda logs."
+
+          exit 0

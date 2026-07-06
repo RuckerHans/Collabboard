@@ -41,6 +41,10 @@ resource "aws_lambda_function" "note_history_worker" {
 
   depends_on = [aws_cloudwatch_log_group.note_history_worker]
 
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+
   tags = {
     Name = "${var.project_name}-${var.environment}-note-history-worker"
   }
