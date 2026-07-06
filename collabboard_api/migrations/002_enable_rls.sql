@@ -12,11 +12,22 @@
 \quit 1
 \endif
 
-DROP ROLE IF EXISTS collabboard_app;
+SELECT EXISTS (
+  SELECT 1
+  FROM pg_roles
+  WHERE rolname = 'collabboard_app'
+) AS app_role_exists
+\gset
 
+\if :app_role_exists
+ALTER ROLE collabboard_app
+  LOGIN PASSWORD :'app_password'
+  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+\else
 CREATE ROLE collabboard_app
   LOGIN PASSWORD :'app_password'
   NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+\endif
 
 DO $grant_connect$
 BEGIN

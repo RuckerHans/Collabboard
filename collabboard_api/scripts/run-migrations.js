@@ -12,6 +12,12 @@ const {
 const { Client } = require('pg');
 
 const migrationsDirectory = path.resolve(__dirname, '..', 'migrations');
+const legacyMigrationFiles = [
+  '001_init_schema_and_seed.sql',
+  '002_enable_rls.sql',
+  '003_notify_board_member_changes.sql',
+  '004_drop_presence_table.sql',
+];
 
 function requireString(value, fieldName) {
   if (typeof value !== 'string' || value.length === 0) {
@@ -122,6 +128,72 @@ function runWithPsql(filePath, credentials, sslEnabled) {
   });
 }
 
+async function initializeMigrationTracking(client) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS public.schema_migrations (
+      filename varchar PRIMARY KEY,
+      applied_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  const {
+    rows: [schemaState],
+  } = await client.query(`
+    SELECT
+      to_regclass('public.note_history') IS NOT NULL AS note_history_exists,
+      to_regclass('public.active_board_users') IS NULL AS presence_table_removed
+  `);
+
+  if (!schemaState.note_history_exists || !schemaState.presence_table_removed) {
+    console.log(
+      '[migrations] Existing post-004 schema not detected; migrations will be evaluated normally',
+    );
+    return;
+  }
+
+  const seeded = await client.query(
+    `
+      INSERT INTO public.schema_migrations (filename, applied_at)
+      SELECT filename, now()
+      FROM unnest($1::varchar[]) AS legacy_migration(filename)
+      ON CONFLICT (filename) DO NOTHING
+      RETURNING filename
+    `,
+    [legacyMigrationFiles],
+  );
+
+  if (seeded.rowCount === 0) {
+    console.log(
+      '[migrations] Existing post-004 schema detected; migration records 001-004 were already seeded',
+    );
+    return;
+  }
+
+  console.log(
+    `[migrations] Existing post-004 schema detected because note_history exists and active_board_users is absent; seeded ${seeded.rowCount} legacy migration record(s)`,
+  );
+}
+
+async function migrationWasApplied(client, fileName) {
+  const result = await client.query(
+    'SELECT 1 FROM public.schema_migrations WHERE filename = $1',
+    [fileName],
+  );
+
+  return result.rowCount > 0;
+}
+
+async function recordMigration(client, fileName) {
+  await client.query(
+    `
+      INSERT INTO public.schema_migrations (filename, applied_at)
+      VALUES ($1, now())
+      ON CONFLICT (filename) DO NOTHING
+    `,
+    [fileName],
+  );
+}
+
 async function main() {
   const secretArn = process.env.DB_CREDENTIALS_SECRET_ARN;
   if (!secretArn) {
@@ -143,6 +215,7 @@ async function main() {
 
   try {
     await client.connect();
+    await initializeMigrationTracking(client);
 
     const migrationFiles = (await readdir(migrationsDirectory))
       .filter((fileName) => fileName.endsWith('.sql'))
@@ -153,6 +226,11 @@ async function main() {
     }
 
     for (const fileName of migrationFiles) {
+      if (await migrationWasApplied(client, fileName)) {
+        console.log(`[migrations] Skipping ${fileName} (already applied)`);
+        continue;
+      }
+
       const filePath = path.join(migrationsDirectory, fileName);
       const sql = await readFile(filePath, 'utf8');
       console.log(`[migrations] Running ${fileName}`);
@@ -163,6 +241,7 @@ async function main() {
         await client.query(sql);
       }
 
+      await recordMigration(client, fileName);
       console.log(`[migrations] Completed ${fileName}`);
     }
 
