@@ -82,3 +82,18 @@ resource "aws_iam_role_policy" "note_history_worker_db_credentials" {
   role   = aws_iam_role.note_history_worker.id
   policy = data.aws_iam_policy_document.note_history_worker_db_credentials.json
 }
+
+data "aws_iam_policy_document" "ecs_task_note_history_queue" {
+  statement {
+    sid       = "PublishNoteHistoryEvents"
+    effect    = "Allow"
+    actions   = ["sqs:SendMessage"]
+    resources = [aws_sqs_queue.note_history.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_note_history_queue" {
+  name   = "collabboard-ecs-task-note-history-queue"
+  role   = aws_iam_role.ecs_task.id
+  policy = data.aws_iam_policy_document.ecs_task_note_history_queue.json
+}

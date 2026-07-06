@@ -69,6 +69,10 @@ resource "aws_ecs_task_definition" "api" {
           name  = "DB_SSL"
           value = "true"
         },
+        {
+          name  = "NOTE_HISTORY_QUEUE_URL"
+          value = aws_sqs_queue.note_history.url
+        },
       ]
 
       secrets = [

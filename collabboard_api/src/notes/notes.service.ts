@@ -14,6 +14,7 @@ import {
   UpdateNoteDto,
   UpdateNotePositionDto,
 } from './dto/note.dto';
+import { NoteHistoryQueueService } from './note-history-queue.service';
 import { NoteHistory } from './note-history.entity';
 import { NoteLockService } from './note-lock.service';
 import { Note } from './note.entity';
@@ -36,6 +37,7 @@ export class NotesService {
     private readonly db: DatabaseService,
     private readonly boards: BoardsService,
     private readonly noteLocks: NoteLockService,
+    private readonly noteHistoryQueue: NoteHistoryQueueService,
   ) {}
 
   async listActive(boardId: string, userId: string) {
@@ -65,7 +67,23 @@ export class NotesService {
       isPinned: dto.isPinned ?? false,
       version: 1,
     });
-    return this.serialize(await this.db.manager.save(Note, note));
+    const saved = this.serialize(await this.db.manager.save(Note, note));
+
+    await this.noteHistoryQueue.publish({
+      noteId: saved.id,
+      boardId,
+      changedBy: userId,
+      operation: 'create',
+      versionBefore: null,
+      versionAfter: saved.version,
+      beforeSnapshot: null,
+      afterSnapshot: this.snapshot(saved),
+      changedFields: Object.keys(
+        this.cleanPatch(dto as Record<string, unknown>),
+      ),
+    });
+
+    return saved;
   }
 
   async update(
@@ -83,7 +101,27 @@ export class NotesService {
       height: dto.height,
       isPinned: dto.isPinned,
     });
-    return this.optimisticUpdate(boardId, id, dto.current_version, patch);
+    const before = await this.getCurrent(boardId, id);
+    const result = await this.optimisticUpdate(
+      boardId,
+      id,
+      dto.current_version,
+      patch,
+    );
+
+    await this.noteHistoryQueue.publish({
+      noteId: id,
+      boardId,
+      changedBy: userId,
+      operation: 'update',
+      versionBefore: dto.current_version,
+      versionAfter: result.version,
+      beforeSnapshot: this.snapshot(before),
+      afterSnapshot: this.snapshot(result),
+      changedFields: Object.keys(patch),
+    });
+
+    return result;
   }
 
   async updatePosition(
@@ -93,33 +131,83 @@ export class NotesService {
     userId: string,
   ) {
     await this.boards.assertRole(boardId, userId, ['owner', 'editor']);
-    return this.optimisticUpdate(boardId, id, dto.current_version, {
+    const patch = {
       positionX: this.clampPosition(dto.positionX),
       positionY: this.clampPosition(dto.positionY),
       zIndex: Math.max(0, dto.zIndex),
+    };
+    const before = await this.getCurrent(boardId, id);
+    const result = await this.optimisticUpdate(
+      boardId,
+      id,
+      dto.current_version,
+      patch,
+    );
+
+    await this.noteHistoryQueue.publish({
+      noteId: id,
+      boardId,
+      changedBy: userId,
+      operation: 'position',
+      versionBefore: dto.current_version,
+      versionAfter: result.version,
+      beforeSnapshot: this.snapshot(before),
+      afterSnapshot: this.snapshot(result),
+      changedFields: Object.keys(patch),
     });
+
+    return result;
   }
 
   async softDelete(boardId: string, id: string, userId: string) {
     await this.boards.assertRole(boardId, userId, ['owner', 'editor']);
+    const before = await this.getCurrent(boardId, id);
     const result = await this.db.manager.update(
       Note,
       { boardId, id, deletedAt: IsNull() },
       { deletedAt: new Date() },
     );
     if (!result.affected) throw new NotFoundException('Note not found');
+
+    await this.noteHistoryQueue.publish({
+      noteId: id,
+      boardId,
+      changedBy: userId,
+      operation: 'delete',
+      versionBefore: before.version,
+      versionAfter: before.version,
+      beforeSnapshot: this.snapshot(before),
+      afterSnapshot: null,
+      changedFields: ['deletedAt'],
+    });
+
     return { deleted: true };
   }
 
   async restore(boardId: string, id: string, userId: string) {
     await this.boards.assertRole(boardId, userId, ['owner', 'editor']);
+    const before = await this.getCurrent(boardId, id);
     const result = await this.db.manager.update(
       Note,
       { boardId, id },
       { deletedAt: null },
     );
     if (!result.affected) throw new NotFoundException('Note not found');
-    return this.getCurrent(boardId, id);
+    const after = await this.getCurrent(boardId, id);
+
+    await this.noteHistoryQueue.publish({
+      noteId: id,
+      boardId,
+      changedBy: userId,
+      operation: 'restore',
+      versionBefore: before.version,
+      versionAfter: after.version,
+      beforeSnapshot: this.snapshot(before),
+      afterSnapshot: this.snapshot(after),
+      changedFields: ['deletedAt'],
+    });
+
+    return after;
   }
 
   async history(boardId: string, id: string, userId: string) {
@@ -140,22 +228,46 @@ export class NotesService {
     fields: Record<string, unknown>,
     userId: string,
   ) {
-    return this.db.runInRlsTransaction(userId, async () => {
-      await this.boards.assertRole(boardId, userId, ['owner', 'editor']);
-      const heldBy = await this.noteLocks.holder(id);
-      if (heldBy && heldBy !== userId) {
-        throw new ConflictException({
-          error: 'locked',
-          heldBy,
-        } satisfies LockedBody);
-      }
-      return this.optimisticUpdate(
-        boardId,
-        id,
-        currentVersion,
-        this.cleanPatch(fields),
-      );
-    });
+    const { result, historyEvent } = await this.db.runInRlsTransaction(
+      userId,
+      async () => {
+        await this.boards.assertRole(boardId, userId, ['owner', 'editor']);
+        const heldBy = await this.noteLocks.holder(id);
+        if (heldBy && heldBy !== userId) {
+          throw new ConflictException({
+            error: 'locked',
+            heldBy,
+          } satisfies LockedBody);
+        }
+        const patch = this.cleanPatch(fields);
+        const before = await this.getCurrent(boardId, id);
+        const result = await this.optimisticUpdate(
+          boardId,
+          id,
+          currentVersion,
+          patch,
+        );
+
+        return {
+          result,
+          historyEvent: {
+            noteId: id,
+            boardId,
+            changedBy: userId,
+            operation: 'update',
+            versionBefore: currentVersion,
+            versionAfter: result.version,
+            beforeSnapshot: this.snapshot(before),
+            afterSnapshot: this.snapshot(result),
+            changedFields: Object.keys(patch),
+          },
+        };
+      },
+    );
+
+    await this.noteHistoryQueue.publish(historyEvent);
+
+    return result;
   }
 
   private async optimisticUpdate(
@@ -199,6 +311,10 @@ export class NotesService {
     return plainToInstance(NoteResponseDto, note, {
       excludeExtraneousValues: true,
     });
+  }
+
+  private snapshot(note: NoteResponseDto): Record<string, unknown> {
+    return { ...note };
   }
 
   private clampPosition(value: number) {

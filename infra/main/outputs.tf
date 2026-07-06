@@ -152,3 +152,8 @@ output "note_history_worker_role_arn" {
   description = "ARN of the note-history worker Lambda's execution role."
   value       = aws_iam_role.note_history_worker.arn
 }
+
+output "note_history_worker_function_name" {
+  description = "Name of the note-history worker Lambda function."
+  value       = aws_lambda_function.note_history_worker.function_name
+}

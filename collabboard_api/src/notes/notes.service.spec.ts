@@ -1,6 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { BoardsService } from '../boards/boards.service';
 import { DatabaseService } from '../database/database.service';
+import { NoteHistoryQueueService } from './note-history-queue.service';
 import { NoteLockService } from './note-lock.service';
 import { NotesService } from './notes.service';
 
@@ -17,10 +18,14 @@ describe('NotesService socket locking', () => {
     const noteLocks = {
       holder: jest.fn().mockResolvedValue('user-2'),
     };
+    const noteHistoryQueue = {
+      publish: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new NotesService(
       db as unknown as DatabaseService,
       boards as unknown as BoardsService,
       noteLocks as unknown as NoteLockService,
+      noteHistoryQueue as unknown as NoteHistoryQueueService,
     );
 
     let caught: unknown;
