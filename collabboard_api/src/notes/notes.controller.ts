@@ -4,12 +4,15 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import {
   CreateNoteDto,
   UpdateNoteDto,
@@ -24,7 +27,7 @@ export class NotesController {
 
   @Get()
   list(
-    @Param('boardId') boardId: string,
+    @Param('boardId', ParseUUIDPipe) boardId: string,
     @Req() request: { user: { id: string } },
   ) {
     return this.notes.listActive(boardId, request.user.id);
@@ -32,7 +35,7 @@ export class NotesController {
 
   @Post()
   create(
-    @Param('boardId') boardId: string,
+    @Param('boardId', ParseUUIDPipe) boardId: string,
     @Body() dto: CreateNoteDto,
     @Req() request: { user: { id: string } },
   ) {
@@ -41,8 +44,8 @@ export class NotesController {
 
   @Patch(':id')
   update(
-    @Param('boardId') boardId: string,
-    @Param('id') id: string,
+    @Param('boardId', ParseUUIDPipe) boardId: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateNoteDto,
     @Req() request: { user: { id: string } },
   ) {
@@ -51,8 +54,8 @@ export class NotesController {
 
   @Delete(':id')
   remove(
-    @Param('boardId') boardId: string,
-    @Param('id') id: string,
+    @Param('boardId', ParseUUIDPipe) boardId: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() request: { user: { id: string } },
   ) {
     return this.notes.softDelete(boardId, id, request.user.id);
@@ -60,8 +63,8 @@ export class NotesController {
 
   @Post(':id/restore')
   restore(
-    @Param('boardId') boardId: string,
-    @Param('id') id: string,
+    @Param('boardId', ParseUUIDPipe) boardId: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() request: { user: { id: string } },
   ) {
     return this.notes.restore(boardId, id, request.user.id);
@@ -69,17 +72,18 @@ export class NotesController {
 
   @Get(':id/history')
   history(
-    @Param('boardId') boardId: string,
-    @Param('id') id: string,
+    @Param('boardId', ParseUUIDPipe) boardId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() pagination: PaginationQueryDto,
     @Req() request: { user: { id: string } },
   ) {
-    return this.notes.history(boardId, id, request.user.id);
+    return this.notes.history(boardId, id, request.user.id, pagination);
   }
 
   @Patch(':id/position')
   position(
-    @Param('boardId') boardId: string,
-    @Param('id') id: string,
+    @Param('boardId', ParseUUIDPipe) boardId: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateNotePositionDto,
     @Req() request: { user: { id: string } },
   ) {

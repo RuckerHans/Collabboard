@@ -5,7 +5,6 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUUID,
   Length,
   Min,
 } from 'class-validator';
@@ -99,14 +98,6 @@ export class UpdateNotePositionDto {
   @IsInt()
   @Min(0)
   zIndex!: number;
-}
-
-export class NoteParamDto {
-  @IsUUID()
-  boardId!: string;
-
-  @IsUUID()
-  id!: string;
 }
 
 export class NoteResponseDto {

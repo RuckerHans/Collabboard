@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { randomUUID } from 'crypto';
+import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { DatabaseService } from '../database/database.service';
 import { UsersService } from '../users/users.service';
 import { BoardMember, BoardRole } from './board-member.entity';
@@ -24,8 +25,11 @@ export class BoardsService {
     private readonly users: UsersService,
   ) {}
 
-  async listForUser(userId: string) {
-    const rows = await this.db.manager
+  async listForUser(userId: string, pagination: PaginationQueryDto = {}) {
+    const page = pagination.page ?? 1;
+    const limit = pagination.limit ?? 20;
+
+    const membershipQuery = this.db.manager
       .createQueryBuilder(Board, 'board')
       .innerJoin(
         BoardMember,
@@ -33,8 +37,13 @@ export class BoardsService {
         'member.board_id = board.id AND member.user_id = :userId',
         { userId },
       )
+      .where('board.is_archived = false');
+
+    const total = await membershipQuery.clone().getCount();
+
+    const rows = await membershipQuery
+      .clone()
       .leftJoin(BoardMember, 'all_members', 'all_members.board_id = board.id')
-      .where('board.is_archived = false')
       .groupBy('board.id')
       .select([
         'board.id AS id',
@@ -45,10 +54,19 @@ export class BoardsService {
         'COUNT(all_members.id)::int AS "memberCount"',
         'NULL::text AS "lastActivity"',
       ])
+      .orderBy('board.name', 'ASC')
+      .offset((page - 1) * limit)
+      .limit(limit)
       .getRawMany();
-    return plainToInstance(BoardResponseDto, rows, {
-      excludeExtraneousValues: true,
-    });
+
+    return {
+      data: plainToInstance(BoardResponseDto, rows, {
+        excludeExtraneousValues: true,
+      }),
+      total,
+      page,
+      limit,
+    };
   }
 
   async create(dto: CreateBoardDto, ownerId: string) {

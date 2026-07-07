@@ -1,4 +1,4 @@
-FROM node:20-alpine AS dependencies
+FROM node:22-alpine AS dependencies
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ FROM test AS builder
 RUN npm run build
 RUN test -f /app/dist/main.js
 
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 

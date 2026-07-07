@@ -5,6 +5,9 @@
   "private": true,
   "license": "UNLICENSED",
   "main": "index.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "package": "bash build.sh"
   },

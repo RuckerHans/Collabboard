@@ -100,7 +100,7 @@ flowchart TD
 
 ### Async Worker (`collabboard_api/lambda/note-history-worker/`)
 
-- **AWS Lambda** (Node.js 20.x) — standalone SQS-triggered function, independent of the main NestJS app's dependency tree
+- **AWS Lambda** (Node.js 22.x) — standalone SQS-triggered function, independent of the main NestJS app's dependency tree
 - Connects to RDS as the same least-privilege `collabboard_app` role the API uses, fetching credentials from the same Secrets Manager secret
 - Reports partial-batch failures (`ReportBatchItemFailures`) so one malformed message can't block or fail an entire batch of otherwise-good ones
 - Runs inside the VPC, in the same private subnets as the API and RDS
@@ -161,7 +161,7 @@ flowchart TD
 ### Prerequisites
 
 - Docker & Docker Compose
-- Node.js 20+ (for local development without Docker)
+- Node.js 22+ (for local development without Docker)
 - Terraform 1.6+ and the AWS CLI (only needed if working on infrastructure, not for local app development)
 
 ### Using Docker Compose

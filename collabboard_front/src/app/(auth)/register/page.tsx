@@ -73,7 +73,7 @@ export default function RegisterPage() {
 
         {register.error && (
           <p className="mt-3 rounded-md bg-red-50 p-2 text-sm text-red-700">
-            {getApiErrorMessage(register.error, 'Could not create account. Check that email and username are unique.')}
+            {getApiErrorMessage(register.error, 'Could not create account. Check that email and username are unique.', { includeRequestDetails: false })}
           </p>
         )}
 

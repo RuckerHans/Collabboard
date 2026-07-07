@@ -6,6 +6,7 @@ import {
 import { plainToInstance } from 'class-transformer';
 import { IsNull } from 'typeorm';
 import { BoardsService } from '../boards/boards.service';
+import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { DatabaseService } from '../database/database.service';
 import {
   CreateNoteDto,
@@ -210,15 +211,29 @@ export class NotesService {
     return after;
   }
 
-  async history(boardId: string, id: string, userId: string) {
+  async history(
+    boardId: string,
+    id: string,
+    userId: string,
+    pagination: PaginationQueryDto = {},
+  ) {
     await this.boards.assertMember(boardId, userId);
-    const rows = await this.db.manager.find(NoteHistory, {
+    const page = pagination.page ?? 1;
+    const limit = pagination.limit ?? 20;
+    const [rows, total] = await this.db.manager.findAndCount(NoteHistory, {
       where: { boardId, noteId: id },
       order: { versionAfter: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
-    return plainToInstance(NoteHistoryResponseDto, rows, {
-      excludeExtraneousValues: true,
-    });
+    return {
+      data: plainToInstance(NoteHistoryResponseDto, rows, {
+        excludeExtraneousValues: true,
+      }),
+      total,
+      page,
+      limit,
+    };
   }
 
   async updateFromSocket(

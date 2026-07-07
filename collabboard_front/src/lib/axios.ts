@@ -34,7 +34,21 @@ api.interceptors.response.use(
   },
 );
 
-export function getApiErrorMessage(error: unknown, fallback = 'Something went wrong. Please try again.') {
+export type ApiErrorMessageOptions = {
+  // Appends "(status, METHOD /path)" to the message. Useful for surfaces aimed
+  // at a developer running the app locally (e.g. "API not reachable" states),
+  // but it's leaky, technical noise for a normal user-facing form error like a
+  // failed login — set this to false for those call sites.
+  includeRequestDetails?: boolean;
+};
+
+export function getApiErrorMessage(
+  error: unknown,
+  fallback = 'Something went wrong. Please try again.',
+  options: ApiErrorMessageOptions = {},
+) {
+  const { includeRequestDetails = true } = options;
+
   if (!axios.isAxiosError(error)) return fallback;
 
   const data = error.response?.data as any;
@@ -42,7 +56,7 @@ export function getApiErrorMessage(error: unknown, fallback = 'Something went wr
   const status = error.response?.status;
   const method = error.config?.method?.toUpperCase();
   const url = getRequestUrl(error);
-  const requestSummary = [method, url].filter(Boolean).join(' ');
+  const requestSummary = includeRequestDetails ? [method, url].filter(Boolean).join(' ') : '';
 
   const serverMessage =
     typeof message === 'string'
@@ -57,7 +71,12 @@ export function getApiErrorMessage(error: unknown, fallback = 'Something went wr
 
   if (status === 404) {
     if (data?.error !== 'route_not_found' && serverMessage) {
-      return `${serverMessage} (404${requestSummary ? `, ${requestSummary}` : ''})`;
+      return includeRequestDetails
+        ? `${serverMessage} (404${requestSummary ? `, ${requestSummary}` : ''})`
+        : serverMessage;
+    }
+    if (!includeRequestDetails) {
+      return serverMessage ?? fallback;
     }
     return [
       'API route not found (404).',
@@ -69,6 +88,9 @@ export function getApiErrorMessage(error: unknown, fallback = 'Something went wr
   }
 
   if (!error.response) {
+    if (!includeRequestDetails) {
+      return 'Could not reach the API server. Please try again.';
+    }
     return [
       'Could not reach the API server.',
       requestSummary ? `Request: ${requestSummary}.` : undefined,
@@ -79,9 +101,11 @@ export function getApiErrorMessage(error: unknown, fallback = 'Something went wr
   }
 
   if (serverMessage) {
+    if (!includeRequestDetails) return serverMessage;
     return status ? `${serverMessage} (${status}${requestSummary ? `, ${requestSummary}` : ''})` : serverMessage;
   }
 
+  if (!includeRequestDetails) return fallback;
   return status ? `${fallback} (${status}${requestSummary ? `, ${requestSummary}` : ''})` : fallback;
 }
 

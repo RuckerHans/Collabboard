@@ -4,12 +4,15 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import {
   CreateBoardDto,
   InviteMemberDto,
@@ -24,8 +27,11 @@ export class BoardsController {
   constructor(private readonly boards: BoardsService) {}
 
   @Get()
-  list(@Req() request: { user: { id: string } }) {
-    return this.boards.listForUser(request.user.id);
+  list(
+    @Query() pagination: PaginationQueryDto,
+    @Req() request: { user: { id: string } },
+  ) {
+    return this.boards.listForUser(request.user.id, pagination);
   }
 
   @Post()
@@ -37,13 +43,16 @@ export class BoardsController {
   }
 
   @Get(':id')
-  get(@Param('id') id: string, @Req() request: { user: { id: string } }) {
+  get(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: { user: { id: string } },
+  ) {
     return this.boards.getWithMembers(id, request.user.id);
   }
 
   @Patch(':id')
   update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateBoardDto,
     @Req() request: { user: { id: string } },
   ) {
@@ -51,13 +60,16 @@ export class BoardsController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string, @Req() request: { user: { id: string } }) {
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: { user: { id: string } },
+  ) {
     return this.boards.remove(id, request.user.id);
   }
 
   @Post(':id/members')
   invite(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: InviteMemberDto,
     @Req() request: { user: { id: string } },
   ) {
@@ -66,8 +78,8 @@ export class BoardsController {
 
   @Patch(':id/members/:userId')
   changeRole(
-    @Param('id') id: string,
-    @Param('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
     @Body() dto: UpdateMemberRoleDto,
     @Req() request: { user: { id: string } },
   ) {
@@ -76,8 +88,8 @@ export class BoardsController {
 
   @Delete(':id/members/:userId')
   removeMember(
-    @Param('id') id: string,
-    @Param('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
     @Req() request: { user: { id: string } },
   ) {
     return this.boards.removeMember(id, userId, request.user.id);

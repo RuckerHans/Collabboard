@@ -1,5 +1,11 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ExecutionContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Reflector } from '@nestjs/core';
+import {
+  ThrottlerGuard,
+  ThrottlerModuleOptions,
+  ThrottlerStorage,
+} from '@nestjs/throttler';
 import { Server } from 'socket.io';
 import { NoteLockService } from '../notes/note-lock.service';
 import { NotesService } from '../notes/notes.service';
@@ -207,5 +213,50 @@ describe('PresenceGateway membership revocation', () => {
       'note_conflict',
       expect.anything(),
     );
+  });
+});
+
+describe('PresenceGateway throttling exemption', () => {
+  it('is exempt from the app-wide ThrottlerGuard instead of crashing on it', async () => {
+    // Mirrors app.module.ts's real ThrottlerModule.forRoot() config.
+    const options: ThrottlerModuleOptions = {
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 20 }],
+    };
+    // If the guard were NOT skipped, it would call handleRequest(), which
+    // reads req/res via context.switchToHttp() -- for a WS context that
+    // resolves to [socket client, message payload], and this storage stub
+    // reports isBlocked: true, so the guard would try
+    // `res.header('Retry-After', ...)` on the plain payload object below and
+    // throw, since it has no .header method. A passing test here proves
+    // @SkipThrottle() short-circuits before any of that runs.
+    const storage: ThrottlerStorage = {
+      increment: jest.fn().mockResolvedValue({
+        totalHits: 999,
+        timeToExpire: 60,
+        isBlocked: true,
+        timeToBlockExpire: 60,
+      }),
+    };
+    const guard = new ThrottlerGuard(options, storage, new Reflector());
+    await guard.onModuleInit();
+
+    const socketClient = { id: 'socket-1' };
+    const messagePayload = { boardId: 'board-1' };
+    const wsContext = {
+      getClass: () => PresenceGateway,
+      // Lookup key for context.getHandler() only, never invoked -- unbound
+      // `this` doesn't apply.
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      getHandler: () => PresenceGateway.prototype.joinBoard,
+      getType: () => 'ws',
+      switchToHttp: () => ({
+        getRequest: () => socketClient,
+        getResponse: () => messagePayload,
+      }),
+    } as unknown as ExecutionContext;
+
+    await expect(guard.canActivate(wsContext)).resolves.toBe(true);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() stub, not invoked as a bound method
+    expect(storage.increment).not.toHaveBeenCalled();
   });
 });

@@ -1,12 +1,5 @@
 import { Expose, Type } from 'class-transformer';
-import {
-  IsEmail,
-  IsIn,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Length,
-} from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, Length } from 'class-validator';
 import type { BoardRole } from '../board-member.entity';
 
 export class CreateBoardDto {
@@ -43,11 +36,6 @@ export class InviteMemberDto {
 export class UpdateMemberRoleDto {
   @IsIn(['editor', 'viewer'])
   role!: Extract<BoardRole, 'editor' | 'viewer'>;
-}
-
-export class BoardParamDto {
-  @IsUUID()
-  id!: string;
 }
 
 export class BoardMemberResponseDto {

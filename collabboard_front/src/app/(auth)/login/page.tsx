@@ -53,7 +53,7 @@ export default function LoginPage() {
 
         {login.error && (
           <p className="mt-3 rounded-md bg-red-50 p-2 text-sm text-red-700">
-            {getApiErrorMessage(login.error, 'Invalid email or password.')}
+            {getApiErrorMessage(login.error, 'Invalid email or password.', { includeRequestDetails: false })}
           </p>
         )}
 

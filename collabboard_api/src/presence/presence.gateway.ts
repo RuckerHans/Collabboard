@@ -10,6 +10,7 @@ import {
 import { OnEvent } from '@nestjs/event-emitter';
 import { HttpException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Server } from 'socket.io';
 import { JwtPayload } from '../auth/auth.service';
 import type { AuthenticatedSocket } from '../auth/guards/ws-jwt.guard';
@@ -30,6 +31,14 @@ type NoteUpdateBody = BoardBody & {
   [key: string]: unknown;
 };
 
+// ThrottlerGuard is registered globally (APP_GUARD) for the REST API, but it
+// assumes an HTTP req/res pair. Applied to a WS execution context it reads
+// the wrong positional args (client socket as "req", message payload as
+// "res") and throws trying to call res.header(...), breaking every message
+// handler below. Real-time traffic is bounded by other means (auth on
+// connect, room membership checks, DB-level constraints) so it's exempted
+// here rather than rate-limited incorrectly.
+@SkipThrottle()
 @WebSocketGateway({
   cors: {
     origin: process.env.CORS_ORIGIN?.split(',') ?? true,

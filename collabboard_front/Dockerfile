@@ -1,4 +1,4 @@
-FROM node:20-alpine AS dependencies
+FROM node:22-alpine AS dependencies
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
 
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 

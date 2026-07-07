@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { BoardsModule } from './boards/boards.module';
 import { DatabaseModule } from './database/database.module';
@@ -17,6 +18,15 @@ import { HealthController } from './health.controller';
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([
+      {
+        // Default limit for every route that doesn't set its own @Throttle().
+        // Generous enough for normal app usage, low enough to blunt scripted abuse.
+        name: 'default',
+        ttl: 60_000,
+        limit: 20,
+      },
+    ]),
     DatabaseModule,
     UsersModule,
     AuthModule,
@@ -26,6 +36,7 @@ import { HealthController } from './health.controller';
   ],
   controllers: [HealthController],
   providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: RlsTransactionInterceptor },
   ],
 })

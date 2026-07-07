@@ -8,7 +8,13 @@ import { useBoardStore } from '@/src/store/boardStore';
 
 export function useBoards() {
   const queryClient = useQueryClient();
-  const boards = useQuery({ queryKey: ['boards'], queryFn: async () => (await api.get<Board[]>('/boards')).data });
+  const boards = useQuery({
+    queryKey: ['boards'],
+    // Backend paginates this endpoint now (default limit 20). A high limit
+    // keeps today's dashboard (which has no pagination UI yet) showing every
+    // board a user has, while the API stays protected from unbounded scans.
+    queryFn: async () => (await api.get<{ data: Board[]; total: number }>('/boards', { params: { limit: 100 } })).data.data,
+  });
   const createBoard = useMutation({
     mutationFn: async (body: { name: string; description?: string }) => (await api.post<Board>('/boards', body)).data,
     onSuccess: (created) => {
@@ -121,7 +127,15 @@ export function useNotes(boardId: string) {
 export function useNoteHistory(boardId: string, noteId?: string) {
   return useQuery({
     queryKey: ['note-history', boardId, noteId],
-    queryFn: async () => (await api.get<NoteHistory[]>(`/boards/${boardId}/notes/${noteId}/history`)).data,
+    // Same pagination story as boards: request a generous page size so the
+    // existing history modal keeps working unchanged for now.
+    queryFn: async () =>
+      (
+        await api.get<{ data: NoteHistory[]; total: number }>(
+          `/boards/${boardId}/notes/${noteId}/history`,
+          { params: { limit: 100 } },
+        )
+      ).data.data,
     enabled: Boolean(boardId && noteId),
   });
 }

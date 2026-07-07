@@ -22,7 +22,7 @@ resource "aws_lambda_function" "note_history_worker" {
   source_code_hash = data.archive_file.note_history_worker.output_base64sha256
 
   handler = "index.handler"
-  runtime = "nodejs20.x"
+  runtime = "nodejs22.x"
 
   timeout     = 30
   memory_size = 128
