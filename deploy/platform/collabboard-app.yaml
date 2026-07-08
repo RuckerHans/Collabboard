@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/RuckerHans/Collabboard   # <-- fill in, exact URL
+    repoURL: https://github.com/RuckerHans/Collabboard
     targetRevision: master
     path: deploy/chart
     helm:
@@ -15,4 +15,7 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: default
-  # No syncPolicy yet — deliberately. First contact is manual.
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
