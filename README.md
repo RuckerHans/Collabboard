@@ -8,6 +8,16 @@ A real-time collaborative whiteboard application that allows multiple users to c
 
 Register a free account to try it out. Running on the raw ALB endpoint for now — a custom domain with HTTPS (ACM + Route 53) is a planned next step, see [Notes](#notes).
 
+**Demo accounts** (seeded, shared — anyone can use them, so don't store anything private; the three roles show off the member-permission model):
+
+| Role   | Email                      | Password      |
+|--------|----------------------------|---------------|
+| Owner  | `owner@collabboard.test`   | `Password123!` |
+| Editor | `editor@collabboard.test`  | `Editor123!`   |
+| Viewer | `viewer@collabboard.test`  | `Viewer123!`   |
+
+Open the same board as two different accounts in two tabs to see live cursors, presence, and note locking in action.
+
 ## Overview
 
 Collaboard is a web-based collaborative canvas where users can:
