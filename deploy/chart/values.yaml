@@ -25,4 +25,4 @@ api:
 
 front:
   image: collabboard-front:kind
-  replicas: 1
+  replicas: 2
