@@ -15,7 +15,9 @@ postgres:
     appPassword: collabboard_app_pw123
 
 api:
-  image: collabboard-api:kind
+  image:
+    repository: collabboard-api
+    tag: kind
   replicas: 3
   jwtSecret: local-dev-collabboard-secret
   config:
@@ -24,5 +26,7 @@ api:
     googleCallbackUrl: http://localhost/api/auth/google/callback
 
 front:
-  image: collabboard-front:kind
-  replicas: 2
+  image:
+    repository: collabboard-front
+    tag: kind
+  replicas: 1
