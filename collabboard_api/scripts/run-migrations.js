@@ -195,14 +195,7 @@ async function recordMigration(client, fileName) {
 }
 
 async function main() {
-  const secretArn = process.env.DB_CREDENTIALS_SECRET_ARN;
-  if (!secretArn) {
-    throw new Error(
-      'DB_CREDENTIALS_SECRET_ARN environment variable is required',
-    );
-  }
-
-  const credentials = await fetchCredentials(secretArn);
+  const credentials = await resolveCredentials();
   const sslEnabled = process.env.DB_SSL !== 'false';
   const client = new Client({
     host: credentials.host,
@@ -255,3 +248,34 @@ main().catch((error) => {
   console.error('[migrations] Migration run failed:', error);
   process.exitCode = 1;
 });
+
+async function resolveCredentials() {
+  const secretArn = process.env.DB_CREDENTIALS_SECRET_ARN;
+  if (secretArn) {
+    return fetchCredentials(secretArn);
+  }
+
+  const required = (name) => {
+    const value = process.env[name];
+    if (typeof value !== 'string' || value.length === 0) {
+      throw new Error(
+        `${name} is required when DB_CREDENTIALS_SECRET_ARN is not set`,
+      );
+    }
+    return value;
+  };
+
+  const port = Number(process.env.DB_PORT ?? '5432');
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('DB_PORT must be a valid port number');
+  }
+
+  return {
+    username: required('DB_USERNAME'),
+    password: required('DB_PASSWORD'),
+    appPassword: required('APP_PASSWORD'),
+    host: required('DB_HOST'),
+    port,
+    database: required('DB_NAME'),
+  };
+}

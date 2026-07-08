@@ -1,0 +1,28 @@
+migrations:
+  run: false
+
+redis:
+  image: redis:7-alpine
+  replicas: 1
+
+postgres:
+  image: postgres:16-alpine
+  storage: 1Gi
+  credentials:
+    database: collabboard
+    user: collabboard
+    password: collabboard123
+    appPassword: collabboard_app_pw123
+
+api:
+  image: collabboard-api:kind
+  replicas: 3
+  jwtSecret: local-dev-collabboard-secret
+  config:
+    corsOrigin: http://localhost
+    jwtExpiry: 7d
+    googleCallbackUrl: http://localhost/api/auth/google/callback
+
+front:
+  image: collabboard-front:kind
+  replicas: 1
