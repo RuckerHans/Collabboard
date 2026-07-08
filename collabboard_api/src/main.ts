@@ -44,3 +44,4 @@ async function bootstrap() {
 }
 
 void bootstrap();
+//Trigger GitOps pipeline
