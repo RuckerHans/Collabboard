@@ -108,6 +108,7 @@ flowchart TD
 - **GitHub Actions + OIDC** — test-gated CI/CD with no stored AWS credentials; on every push to `master`, each service is independently built, tagged with its commit SHA, pushed, and deployed
 - **Amazon CloudWatch** — centralized logs, Container Insights metrics, and alarms (CPU, memory, host health, SQS DLQ depth) wired to email alerts via SNS
 - **Docker & Docker Compose** — local development environment
+- **Kubernetes (kind) + Helm + ArgoCD** — a parallel, fully GitOps-managed deployment of the same stack: hand-built Helm chart, values-gated migration hook Jobs, automated sync/self-heal/prune, and a CI pipeline that ships SHA-tagged images to GHCR and commits tag bumps for ArgoCD to reconcile
 
 ## Real-time Features
 
@@ -140,7 +141,11 @@ This repository contains a collaborative whiteboard application with separate AP
 - `collabboard_api/` — NestJS backend service
 - `collabboard_front/` — Next.js frontend service
 - `docker-compose.yml` — root Compose file for local development (`postgres`, `api`, `front`)
+- `deploy/k8s/` — kind cluster config for the local Kubernetes deployment (build history in its README)
+- `deploy/chart/` — Helm chart for the full stack, including the values-gated migration hook Job
+- `deploy/platform/` — ArgoCD install manifest (vendored/pinned) and the `Application` definition
 - `.github/workflows/ci.yml` — test suite plus independent `deploy-api` / `deploy-front` jobs that build, push, and roll out to ECS on every push to `master`
+- `.github/workflows/gitops.yml` / `tests.yml` — the Kubernetes image pipeline (GHCR + tag-bump commits for ArgoCD) and the shared test gate it calls
 
 ## Getting Started
 
@@ -202,6 +207,17 @@ Every push to `master` runs the relevant test suite first; only on a pass does t
 
 If a deploy fails — a bad health check, a startup crash — the workflow fails loudly rather than leaving a broken version silently running. Database migrations are intentionally excluded from this automatic flow and run via a separate manual `workflow_dispatch` job.
 
+## Kubernetes & GitOps (local)
+
+Beyond the ECS production deployment, the entire stack also runs on Kubernetes via a fully automated GitOps pipeline — currently targeting a local [kind](https://kind.sigs.k8s.io/) cluster, built as a deliberate deep-dive into Kubernetes, Helm, and ArgoCD. The same application images, migration script, and architectural guarantees (multi-instance realtime via the Redis adapter, RLS-scoped database access, schema-before-code migration ordering) hold on both orchestrators — no application changes were needed, by design.
+
+- **Helm chart** (`deploy/chart/`) — hand-built from raw manifests: all services templated with values-driven config, common labels via a helper template, and database migrations as a **values-gated pre-upgrade hook Job** running the same `run-migrations.js` + `schema_migrations` tracking as production. A failed migration aborts the sync before any workload changes.
+- **ArgoCD GitOps** (`deploy/platform/`) — automated sync with self-heal and prune: git is the single source of truth, manual cluster changes revert in seconds, and rollback is `git revert`.
+- **CI/CD** (`.github/workflows/gitops.yml` + `tests.yml`) — pushes touching app code run a shared test gate, build SHA-tagged images to GHCR, and commit the new tag into the chart's values file; ArgoCD converges on that commit. Rolling updates are zero-downtime — a bad image reference stalls safely with the previous version still serving (verified in practice).
+- **Cluster** (`deploy/k8s/`) — 3-node kind cluster with ingress-nginx replacing the nginx reverse proxy (same path-based routing, including WebSockets).
+
+See `deploy/k8s/README.md`, `deploy/chart/README.md`, and `deploy/platform/README.md` for the full build history, runbooks, and incidents survived along the way. Deploying this to a managed cluster (EKS / k3s on EC2, with External Secrets + IRSA + the ALB controller) is designed as the next step.
+
 ## Observability
 
 - Application logs ship to CloudWatch Logs automatically (14-day retention)
@@ -222,6 +238,7 @@ If a deploy fails — a bad health check, a startup crash — the workflow fails
 - ✅ Type-safe full-stack with TypeScript
 - ✅ Production deployment on AWS ECS/Fargate with automated CI/CD
 - ✅ Infrastructure as Code — full AWS stack provisioned with Terraform
+- ✅ Parallel Kubernetes deployment with Helm + ArgoCD GitOps (local kind cluster)
 
 ## Development
 
