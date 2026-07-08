@@ -13,7 +13,7 @@ postgres:
     appPassword: collabboard_app_pw123
 api:
   image:
-    repository: collabboard-api
+    repository: ghcr.io/ruckerhans/collabboard-api
     tag: 7a09ed6978bbb697c02956c11735aa90ef8cd8bd
   replicas: 3
   jwtSecret: local-dev-collabboard-secret
@@ -23,6 +23,6 @@ api:
     googleCallbackUrl: http://localhost/api/auth/google/callback
 front:
   image:
-    repository: collabboard-front
+    repository: ghcr.io/ruckerhans/collabboard-front
     tag: 7a09ed6978bbb697c02956c11735aa90ef8cd8bd
   replicas: 1
