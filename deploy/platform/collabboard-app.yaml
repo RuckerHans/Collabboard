@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: collabboard
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/RuckerHans/Collabboard   # <-- fill in, exact URL
+    targetRevision: master
+    path: deploy/chart
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  # No syncPolicy yet — deliberately. First contact is manual.
